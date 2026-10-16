@@ -6,6 +6,7 @@
   <title>CP Team Tracker</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     tailwind.config = {
       darkMode: 'class',
@@ -89,6 +90,59 @@
         <button onclick="toggleTheme()" class="px-3 py-2 text-sm rounded-lg dark:bg-gray-700 bg-gray-200 hover:opacity-90 transition" aria-label="Toggle theme"><i class="fas fa-moon dark:hidden"></i><i class="fas fa-sun hidden dark:inline"></i></button>
       </div>
     </header>
+
+    <!-- Active Group & Workspace Banner -->
+    <div id="group-workspace-banner" class="mb-6 p-4 rounded-xl border dark:border-[#3b3b5c] border-gray-200 dark:bg-[#262640] bg-gray-50 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-blue-600/10 text-blue-500 flex items-center justify-center text-lg shrink-0">
+          <i class="fas fa-layer-group"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Active Group:</span>
+            <span id="active-group-name" class="font-bold text-sm dark:text-white text-gray-800">ICPC World Finals Alpha</span>
+            <button onclick="copyGroupId()" class="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-blue-900/30 text-blue-400 border border-blue-700/40 hover:bg-blue-900/50 transition flex items-center gap-1" title="Click to copy Unique Group ID">
+              <span id="active-group-id-text">GRP-1001</span>
+              <i class="fas fa-copy text-[10px]"></i>
+            </button>
+          </div>
+          <p class="text-xs dark:text-gray-400 text-gray-500 mt-0.5">Invite teammates by their <strong>Username</strong> and this <strong>Unique Group ID</strong>.</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 flex-wrap">
+        <button onclick="openInviteModal()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition flex items-center gap-1.5 shadow-sm">
+          <i class="fas fa-user-plus"></i>
+          <span>Invite by Username & Group ID</span>
+        </button>
+        <button onclick="openCreateGroupModal()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-purple-600 hover:bg-purple-700 text-white transition flex items-center gap-1.5 shadow-sm">
+          <i class="fas fa-plus-circle"></i>
+          <span>Create Group</span>
+        </button>
+        <button onclick="openJoinGroupModal()" class="px-3 py-1.5 text-xs font-semibold rounded-lg dark:bg-[#1e1e2e] bg-white border dark:border-[#3b3b5c] border-gray-300 hover:border-gray-400 text-gray-700 dark:text-gray-200 transition flex items-center gap-1.5 shadow-sm">
+          <i class="fas fa-sign-in-alt"></i>
+          <span>Join Group</span>
+        </button>
+        <div id="backend-status-badge" class="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-gray-500/10 text-gray-400 border border-gray-500/20 flex items-center gap-1.5">
+          <span id="backend-dot" class="w-2 h-2 rounded-full bg-gray-400 inline-block"></span>
+          <span id="backend-text">Checking Backend…</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Handles Required Alert Banner (Shows when logged in but handles not connected) -->
+    <div id="handles-required-banner" class="hidden mb-6 p-4 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-300 flex items-center justify-between flex-wrap gap-3">
+      <div class="flex items-center gap-3">
+        <i class="fas fa-exclamation-triangle text-amber-400 text-lg"></i>
+        <div class="text-xs">
+          <strong class="font-bold">Action Required: Connect your Competitive Programming handles:</strong>
+          <span class="text-amber-200/90 ml-1">You must connect your handles (Codeforces, LeetCode, AtCoder, CSES) so your solves sync into the group matrix.</span>
+        </div>
+      </div>
+      <button onclick="openConnectHandlesModal()" class="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-amber-500 hover:bg-amber-600 text-gray-900 transition shadow-sm">
+        <i class="fas fa-link mr-1"></i>Connect Handles Now
+      </button>
+    </div>
 
     <!-- Sync Progress -->
     <div id="sync-progress" class="hidden mb-6 dark:bg-[#262640] bg-gray-100 rounded-xl p-4">
@@ -405,9 +459,18 @@ let isSyncing = false;
   memberAccepted: { memberId: Set<canonId> }
   lastGlobalSync: ts|null
 */
-let S = { teamName: 'CP Team Tracker', members:[], problems:{}, submissions:{}, memberAccepted:{}, lastGlobalSync:null };
+let S = {
+  teamName: 'CP Team Tracker',
+  currentGroupId: 'GRP-1001',
+  currentGroupName: 'ICPC World Finals Alpha',
+  members:[],
+  problems:{},
+  submissions:{},
+  memberAccepted:{},
+  lastGlobalSync:null
+};
 
-let currentUser = null; // { inAppUsername, displayName, email, avatar, provider, handles, teamMemberId }
+let currentUser = null; // { id, inAppUsername, displayName, email, avatar, provider, handles, teamMemberId }
 let inAppDirectory = []; // [ { inAppUsername, name, handles, avatar } ]
 let currentAddMode = 'inapp';
 let selectedSoloMemberId = null;
@@ -451,9 +514,159 @@ function load() {
     const r = localStorage.getItem(STORAGE_KEY);
     if (!r) return;
     const p = JSON.parse(r);
-    S = { ...S, ...p, teamName: p.teamName || 'CP Team Tracker', memberAccepted: Object.fromEntries(Object.entries(p.memberAccepted||{}).map(([k,v])=>[k,new Set(v)])) };
+    S = {
+      ...S,
+      ...p,
+      teamName: p.teamName || 'CP Team Tracker',
+      currentGroupId: p.currentGroupId || 'GRP-1001',
+      currentGroupName: p.currentGroupName || 'ICPC World Finals Alpha',
+      memberAccepted: Object.fromEntries(Object.entries(p.memberAccepted||{}).map(([k,v])=>[k,new Set(v)]))
+    };
   } catch(e) { console.error('Load failed',e); }
 }
+
+// ── 4b. BACKEND REST CLIENT ────────────────────────────────────────────────
+const CPBackend = {
+  baseUrl: (window.location.protocol.startsWith('http')) ? window.location.origin : 'http://localhost:8000',
+  isOnline: false,
+
+  async checkHealth() {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/health`, { method: 'GET' });
+      if (res.ok) {
+        this.isOnline = true;
+        this.updateBadge(true);
+        return true;
+      }
+    } catch (_) {}
+    this.isOnline = false;
+    this.updateBadge(false);
+    return false;
+  },
+
+  updateBadge(online) {
+    const dot = document.getElementById('backend-dot');
+    const text = document.getElementById('backend-text');
+    const badge = document.getElementById('backend-status-badge');
+    if (!dot || !text) return;
+    if (online) {
+      dot.className = 'w-2 h-2 rounded-full bg-emerald-400 inline-block animate-pulse';
+      text.textContent = 'Backend: Online (SQLite)';
+      if (badge) badge.className = 'text-[11px] font-mono px-2.5 py-1 rounded-lg bg-emerald-900/30 text-emerald-400 border border-emerald-700/40 flex items-center gap-1.5';
+    } else {
+      dot.className = 'w-2 h-2 rounded-full bg-amber-400 inline-block';
+      text.textContent = 'Local / Offline Mode';
+      if (badge) badge.className = 'text-[11px] font-mono px-2.5 py-1 rounded-lg bg-amber-900/30 text-amber-400 border border-amber-700/40 flex items-center gap-1.5';
+    }
+  },
+
+  async googleAuth(payload) {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/auth/google`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      return await res.json();
+    } catch (e) {
+      console.warn('Backend googleAuth error', e);
+      return null;
+    }
+  },
+
+  async saveHandles(userId, handles) {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/user/handles`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, handles })
+      });
+      return await res.json();
+    } catch (e) {
+      console.warn('Backend saveHandles error', e);
+      return null;
+    }
+  },
+
+  async createGroup(name, userId) {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/groups`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, userId })
+      });
+      return await res.json();
+    } catch (e) {
+      console.warn('Backend createGroup error', e);
+      return null;
+    }
+  },
+
+  async inviteToGroup(username, groupId, invitedBy) {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/groups/invite`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, groupId, invitedBy })
+      });
+      return await res.json();
+    } catch (e) {
+      console.warn('Backend inviteToGroup error', e);
+      return { error: 'Network error connecting to backend' };
+    }
+  },
+
+  async joinGroup(groupId, userId) {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/groups/join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groupId, userId })
+      });
+      return await res.json();
+    } catch (e) {
+      console.warn('Backend joinGroup error', e);
+      return { error: 'Network error connecting to backend' };
+    }
+  },
+
+  async getGroup(groupId) {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/groups/${encodeURIComponent(groupId)}`);
+      if (res.ok) return await res.json();
+    } catch (e) {
+      console.warn('Backend getGroup error', e);
+    }
+    return null;
+  },
+
+  async searchUsers(query) {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/users/search?q=${encodeURIComponent(query)}`);
+      if (res.ok) {
+        const d = await res.json();
+        return d.users || [];
+      }
+    } catch (e) {
+      console.warn('Backend searchUsers error', e);
+    }
+    return [];
+  },
+
+  async syncSolves(userId, solves, rating) {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/solves/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, solves, codeforcesRating: rating })
+      });
+      return await res.json();
+    } catch (e) {
+      console.warn('Backend syncSolves error', e);
+      return null;
+    }
+  }
+};
 
 // ── 5. UTILITIES ─────────────────────────────────────────────────────────────
 const genId = () => Math.random().toString(36).slice(2,10);
@@ -858,6 +1071,19 @@ function processSubs(memberId, subs) {
       ex.submissionId = sub.submissionId || ex.submissionId;
     }
     S.memberAccepted[memberId].add(pid);
+  }
+  if (CPBackend.isOnline && subs.length > 0) {
+    const payload = subs.map(s => ({
+      canonicalId: s.canonId,
+      platform: s.platform,
+      title: s.name || s.canonId,
+      url: s.url || '#',
+      difficulty: s.difficulty || '',
+      submissionId: s.submissionId || '',
+      verdict: s.verdict || 'AC',
+      timestamp: s.timestamp ? new Date(s.timestamp).toISOString() : new Date().toISOString()
+    }));
+    CPBackend.syncSolves(memberId, payload);
   }
 }
 
@@ -1797,55 +2023,68 @@ function openAuthModal() {
     modalBody.innerHTML = `
       <div class="mb-4 text-center">
         <div class="w-12 h-12 rounded-2xl bg-blue-600/10 text-blue-500 mx-auto flex items-center justify-center text-2xl mb-2">
-          <i class="fas fa-shield-alt"></i>
-        </div>
-        <h2 class="text-xl font-bold">Sign In to CP Tracker</h2>
-        <p class="text-xs dark:text-gray-400 text-gray-500 mt-1">
-          Set up your In-App Username (@handle) to connect with teammates in 1 click and track your solo solve stats.
-        </p>
-      </div>
-
-      <div class="space-y-3 mb-5">
-        <button onclick="handleGoogleSignIn('Utkarsh Tuwani', 'utkarshtuwani@gmail.com', 'utkarsh')" class="w-full flex items-center justify-center gap-3 py-2.5 px-4 rounded-xl border dark:border-[#3b3b5c] border-gray-300 hover:bg-gray-50 dark:hover:bg-[#1e1e2e] transition font-medium text-sm shadow-sm">
-          <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+          <svg class="w-7 h-7" viewBox="0 0 24 24">
             <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
             <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
             <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
             <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
           </svg>
-          <span>Continue with Google (Utkarsh Tuwani)</span>
-        </button>
+        </div>
+        <h2 class="text-xl font-bold">Sign In / Register with Google</h2>
+        <p class="text-xs dark:text-gray-400 text-gray-500 mt-1">
+          Anyone can sign up with their Google account and will automatically be assigned a personalized <strong>UserId (@handle)</strong> in the database.
+        </p>
+      </div>
+
+      <div class="space-y-3 mb-5">
+        <form onsubmit="handleGoogleAuthSubmit(event)" class="space-y-3">
+          <div>
+            <label class="block text-xs font-semibold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">Your Google Name</label>
+            <input id="inp-g-name" type="text" required placeholder="e.g. Utkarsh Tuwani" value="Utkarsh Tuwani"
+              class="w-full text-xs dark:bg-[#1e1e2e] bg-white border dark:border-[#3b3b5c] border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">Your Google Email</label>
+            <input id="inp-g-email" type="email" required placeholder="e.g. utkarshtuwani@gmail.com" value="utkarshtuwani@gmail.com"
+              class="w-full text-xs dark:bg-[#1e1e2e] bg-white border dark:border-[#3b3b5c] border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">Preferred In-App Username / UserId (Optional)</label>
+            <div class="relative">
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-mono text-xs">@</span>
+              <input id="inp-g-username" type="text" placeholder="Leave blank for auto-assigned personalized UserId"
+                class="w-full text-xs pl-7 pr-3 py-2 dark:bg-[#1e1e2e] bg-white border dark:border-[#3b3b5c] border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
+            </div>
+            <p class="text-[11px] dark:text-gray-500 text-gray-400 mt-0.5">Teammates can invite you to their group using this unique @username.</p>
+          </div>
+
+          <button type="submit" class="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs shadow-sm transition">
+            <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+              <path fill="#ffffff" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+              <path fill="#ffffff" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+              <path fill="#ffffff" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+              <path fill="#ffffff" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+            </svg>
+            <span>Continue with Google Sign-In</span>
+          </button>
+        </form>
 
         <div class="flex items-center gap-2 my-2">
           <div class="flex-1 border-t dark:border-[#3b3b5c] border-gray-200"></div>
-          <span class="text-[11px] uppercase tracking-wider text-gray-400 font-medium">Or Custom Profile</span>
+          <span class="text-[11px] uppercase tracking-wider text-gray-400 font-medium">Or Quick Demo Login</span>
           <div class="flex-1 border-t dark:border-[#3b3b5c] border-gray-200"></div>
         </div>
 
-        <form onsubmit="handleCustomSignIn(event)" class="space-y-3">
-          <div>
-            <label class="block text-xs font-semibold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">Full Name</label>
-            <input id="inp-auth-name" type="text" required placeholder="e.g. Alex Chen"
-              class="w-full text-xs dark:bg-[#1e1e2e] bg-white border dark:border-[#3b3b5c] border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label class="block text-xs font-semibold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">Email</label>
-            <input id="inp-auth-email" type="email" required placeholder="e.g. alex@gmail.com"
-              class="w-full text-xs dark:bg-[#1e1e2e] bg-white border dark:border-[#3b3b5c] border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label class="block text-xs font-semibold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">Choose In-App Username (@)</label>
-            <div class="relative">
-              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-mono text-xs">@</span>
-              <input id="inp-auth-username" type="text" required placeholder="alex_cp"
-                class="w-full text-xs pl-7 pr-3 py-2 dark:bg-[#1e1e2e] bg-white border dark:border-[#3b3b5c] border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
-            </div>
-            <p class="text-[11px] dark:text-gray-500 text-gray-400 mt-0.5">Teammates can type this username to connect with you instantly.</p>
-          </div>
-          <button type="submit" class="w-full py-2.5 text-xs rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium transition shadow-sm">
-            <i class="fas fa-user-plus mr-1.5"></i>Create Profile & Sign In
+        <div class="grid grid-cols-2 gap-2">
+          <button onclick="handleGoogleSignIn('Gennady Korotkevich', 'tourist@gmail.com', 'tourist')" class="p-2 text-xs rounded-lg border dark:border-[#3b3b5c] border-gray-300 hover:bg-gray-100 dark:hover:bg-[#1e1e2e] transition text-left flex items-center gap-2">
+            <img src="https://api.dicebear.com/7.x/bottts/svg?seed=tourist" class="w-6 h-6 rounded-full" />
+            <span class="truncate font-semibold">@tourist</span>
           </button>
-        </form>
+          <button onclick="handleGoogleSignIn('Neal Wu', 'neal@gmail.com', 'neal')" class="p-2 text-xs rounded-lg border dark:border-[#3b3b5c] border-gray-300 hover:bg-gray-100 dark:hover:bg-[#1e1e2e] transition text-left flex items-center gap-2">
+            <img src="https://api.dicebear.com/7.x/bottts/svg?seed=neal" class="w-6 h-6 rounded-full" />
+            <span class="truncate font-semibold">@neal</span>
+          </button>
+        </div>
       </div>
     `;
   } else {
@@ -1881,7 +2120,7 @@ function openAuthModal() {
         </div>
 
         <div>
-          <label class="block text-xs font-semibold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1.5">My Platform Handles</label>
+          <label class="block text-xs font-semibold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1.5">My Connected Handles</label>
           <div class="space-y-2 dark:bg-[#1e1e2e]/50 bg-gray-50 p-3 rounded-lg border dark:border-[#3b3b5c] border-gray-200">
             ${PLAT_KEYS.map(p => `
               <div class="flex items-center gap-2">
@@ -1897,7 +2136,7 @@ function openAuthModal() {
 
         <div class="border-t dark:border-[#3b3b5c] border-gray-200 pt-3 flex flex-wrap items-center justify-between gap-2">
           <button type="button" onclick="addCurrentUserToTeam()" class="px-3 py-1.5 text-xs rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-medium transition shadow-sm">
-            <i class="fas fa-user-plus mr-1"></i>Add Me to Team Workspace
+            <i class="fas fa-user-plus mr-1"></i>Add Me to Group Roster
           </button>
           <div class="flex items-center gap-2">
             <button type="button" onclick="closeModal()" class="px-3 py-1.5 text-xs rounded-lg dark:bg-gray-700 bg-gray-200 hover:opacity-90 transition font-medium">Cancel</button>
@@ -1912,15 +2151,33 @@ function openAuthModal() {
   showModal();
 }
 
-function handleGoogleSignIn(name, email, defaultUsername) {
-  const inAppUsername = defaultUsername || email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '');
+async function handleGoogleAuthSubmit(e) {
+  e.preventDefault();
+  const name = document.getElementById('inp-g-name').value.trim();
+  const email = document.getElementById('inp-g-email').value.trim();
+  const username = document.getElementById('inp-g-username').value.trim().replace(/^@/, '');
+
+  await handleGoogleSignIn(name, email, username);
+}
+
+async function handleGoogleSignIn(name, email, defaultUsername) {
+  let backendUser = null;
+  if (CPBackend.isOnline) {
+    const res = await CPBackend.googleAuth({ name, email, username: defaultUsername });
+    if (res && res.success && res.user) {
+      backendUser = res.user;
+    }
+  }
+
+  const inAppUsername = backendUser ? backendUser.username : (defaultUsername || email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, ''));
   currentUser = {
-    displayName: name,
-    email,
-    inAppUsername,
-    avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${inAppUsername}`,
+    id: backendUser ? backendUser.id : ('usr_' + genId()),
+    displayName: backendUser ? backendUser.displayName : name,
+    email: email,
+    inAppUsername: inAppUsername,
+    avatar: backendUser ? backendUser.avatar : `https://api.dicebear.com/7.x/bottts/svg?seed=${inAppUsername}`,
     provider: 'google',
-    handles: {
+    handles: backendUser && backendUser.handles ? backendUser.handles : {
       codeforces: '',
       leetcode: '',
       atcoder: '',
@@ -1928,15 +2185,427 @@ function handleGoogleSignIn(name, email, defaultUsername) {
     }
   };
 
-  const existing = inAppDirectory.find(d => d.inAppUsername.toLowerCase() === inAppUsername.toLowerCase());
-  if (existing && existing.handles) {
-    currentUser.handles = { ...currentUser.handles, ...existing.handles };
+  saveAuth();
+  closeModal();
+  renderAll();
+
+  // If user has not connected handles yet, immediately prompt them to connect handles!
+  const hasHandles = currentUser.handles.codeforces || currentUser.handles.leetcode || currentUser.handles.atcoder || currentUser.handles.cses;
+  if (!hasHandles) {
+    setTimeout(() => {
+      openConnectHandlesModal();
+    }, 400);
+    toast(`Welcome, ${name}! Assigned UserId: @${inAppUsername}. Please connect your handles.`, 'info');
+  } else {
+    toast(`Welcome back, ${name}! Signed in as @${inAppUsername}`, 'success');
+  }
+}
+
+// ── CONNECT HANDLES MODAL ───────────────────────────────────────────────────
+function openConnectHandlesModal() {
+  const modalBody = document.getElementById('modal-body');
+  modalBody.innerHTML = `
+    <div class="mb-4 text-center">
+      <div class="w-12 h-12 rounded-2xl bg-amber-600/10 text-amber-500 mx-auto flex items-center justify-center text-2xl mb-2">
+        <i class="fas fa-link"></i>
+      </div>
+      <h2 class="text-xl font-bold">Connect Your CP Handles</h2>
+      <p class="text-xs dark:text-gray-400 text-gray-500 mt-1">
+        Link your competitive programming handles to automatically track and sync your solved problems into team groups.
+      </p>
+    </div>
+
+    <form onsubmit="handleSaveHandles(event)" class="space-y-3">
+      <div>
+        <label class="block text-xs font-semibold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">
+          <i class="fas fa-code text-blue-400 mr-1"></i>Codeforces Handle
+        </label>
+        <input id="conn-cf" type="text" placeholder="e.g. tourist, neal" value="${esc(currentUser?.handles?.codeforces || '')}"
+          class="w-full text-xs dark:bg-[#1e1e2e] bg-white border dark:border-[#3b3b5c] border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
+      </div>
+      <div>
+        <label class="block text-xs font-semibold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">
+          <i class="fas fa-terminal text-amber-400 mr-1"></i>LeetCode Username
+        </label>
+        <input id="conn-lc" type="text" placeholder="e.g. neal_wu" value="${esc(currentUser?.handles?.leetcode || '')}"
+          class="w-full text-xs dark:bg-[#1e1e2e] bg-white border dark:border-[#3b3b5c] border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
+      </div>
+      <div>
+        <label class="block text-xs font-semibold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">
+          <i class="fas fa-bolt text-blue-400 mr-1"></i>AtCoder Handle
+        </label>
+        <input id="conn-atc" type="text" placeholder="e.g. tourist, chokudai" value="${esc(currentUser?.handles?.atcoder || '')}"
+          class="w-full text-xs dark:bg-[#1e1e2e] bg-white border dark:border-[#3b3b5c] border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
+      </div>
+      <div>
+        <label class="block text-xs font-semibold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">
+          <i class="fas fa-cube text-emerald-400 mr-1"></i>CSES Handle / ID
+        </label>
+        <input id="conn-cses" type="text" placeholder="e.g. user_cses" value="${esc(currentUser?.handles?.cses || '')}"
+          class="w-full text-xs dark:bg-[#1e1e2e] bg-white border dark:border-[#3b3b5c] border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
+      </div>
+
+      <div class="pt-2 flex justify-end gap-2">
+        <button type="button" onclick="closeModal()" class="px-3 py-2 text-xs rounded-lg dark:bg-gray-700 bg-gray-200">Skip</button>
+        <button type="submit" class="px-4 py-2 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition shadow-sm">
+          <i class="fas fa-save mr-1"></i>Save & Connect Handles
+        </button>
+      </div>
+    </form>
+  `;
+  showModal();
+}
+
+async function handleSaveHandles(e) {
+  e.preventDefault();
+  if (!currentUser) return;
+
+  const handles = {
+    codeforces: (document.getElementById('conn-cf')?.value || '').trim(),
+    leetcode: (document.getElementById('conn-lc')?.value || '').trim(),
+    atcoder: (document.getElementById('conn-atc')?.value || '').trim(),
+    cses: (document.getElementById('conn-cses')?.value || '').trim()
+  };
+
+  currentUser.handles = handles;
+  if (CPBackend.isOnline && currentUser.id) {
+    await CPBackend.saveHandles(currentUser.id, handles);
+  }
+
+  // Update in local members list if user exists in current team
+  const myMem = S.members.find(m => (m.inAppUsername && m.inAppUsername.toLowerCase() === currentUser.inAppUsername.toLowerCase()) || m.id === currentUser.teamMemberId);
+  if (myMem) {
+    myMem.handles = { ...handles };
+    save();
   }
 
   saveAuth();
   closeModal();
   renderAll();
-  toast(`Welcome, ${name}! Signed in via Google as @${inAppUsername}`, 'success');
+  toast('Handles successfully connected! Triggering solve sync…', 'success');
+
+  // Trigger sync for this user
+  if (myMem) {
+    syncOne(myMem.id);
+  }
+}
+
+// ── GROUP MANAGEMENT: INVITE, CREATE & JOIN ─────────────────────────────────
+function renderActiveGroupBanner() {
+  const nameEl = document.getElementById('active-group-name');
+  const idEl = document.getElementById('active-group-id-text');
+  if (nameEl) nameEl.textContent = S.currentGroupName || 'ICPC World Finals Alpha';
+  if (idEl) idEl.textContent = S.currentGroupId || 'GRP-1001';
+
+  checkHandlesAlert();
+}
+
+function checkHandlesAlert() {
+  const banner = document.getElementById('handles-required-banner');
+  if (!banner) return;
+  if (currentUser) {
+    const hasHandles = currentUser.handles?.codeforces || currentUser.handles?.leetcode || currentUser.handles?.atcoder || currentUser.handles?.cses;
+    if (!hasHandles) {
+      banner.classList.remove('hidden');
+      return;
+    }
+  }
+  banner.classList.add('hidden');
+}
+
+function copyGroupId() {
+  const gid = S.currentGroupId || 'GRP-1001';
+  navigator.clipboard.writeText(gid).then(() => {
+    toast(`Copied Group ID: ${gid} to clipboard!`, 'success');
+  }).catch(() => {
+    toast(`Group ID: ${gid}`, 'info');
+  });
+}
+
+function openInviteModal() {
+  const modalBody = document.getElementById('modal-body');
+  modalBody.innerHTML = `
+    <div class="mb-4 text-center">
+      <div class="w-12 h-12 rounded-2xl bg-blue-600/10 text-blue-500 mx-auto flex items-center justify-center text-2xl mb-2">
+        <i class="fas fa-user-plus"></i>
+      </div>
+      <h2 class="text-xl font-bold">Invite Teammate to Group</h2>
+      <p class="text-xs dark:text-gray-400 text-gray-500 mt-1">
+        Invite any registered teammate using their <strong>Username</strong> and this <strong>Unique Group ID</strong>.
+      </p>
+    </div>
+
+    <form onsubmit="handleInviteTeammate(event)" class="space-y-3">
+      <div>
+        <label class="block text-xs font-semibold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">Teammate In-App Username (@)</label>
+        <div class="relative">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-mono text-xs">@</span>
+          <input id="invite-inp-username" type="text" required placeholder="Type username (e.g. tourist, petr, utkarsh)"
+            oninput="handleInviteSearch(this.value)" autocomplete="off"
+            class="w-full text-xs pl-7 pr-3 py-2.5 dark:bg-[#1e1e2e] bg-white border dark:border-[#3b3b5c] border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
+          <div id="invite-suggestions" class="absolute left-0 right-0 top-full mt-1 dark:bg-[#1e1e2e] bg-white border dark:border-[#3b3b5c] border-gray-200 rounded-lg shadow-xl z-30 hidden max-h-40 overflow-y-auto"></div>
+        </div>
+        <p class="text-[11px] dark:text-gray-500 text-gray-400 mt-0.5">The programmer must have signed up with this unique username.</p>
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">Unique Group ID</label>
+        <div class="relative">
+          <input id="invite-inp-group-id" type="text" required value="${esc(S.currentGroupId || 'GRP-1001')}"
+            class="w-full text-xs px-3 py-2.5 dark:bg-[#1e1e2e] bg-white border dark:border-[#3b3b5c] border-gray-300 rounded-lg font-mono font-bold text-blue-400 outline-none focus:ring-2 focus:ring-blue-500 uppercase" />
+        </div>
+        <p class="text-[11px] dark:text-gray-500 text-gray-400 mt-0.5">Unique ID for: <strong>${esc(S.currentGroupName || 'Team Group')}</strong></p>
+      </div>
+
+      <div class="pt-2 flex justify-end gap-2">
+        <button type="button" onclick="closeModal()" class="px-3 py-2 text-xs rounded-lg dark:bg-gray-700 bg-gray-200">Cancel</button>
+        <button type="submit" class="px-4 py-2 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition shadow-sm">
+          <i class="fas fa-paper-plane mr-1"></i>Invite & Add to Group
+        </button>
+      </div>
+    </form>
+  `;
+  showModal();
+}
+
+async function handleInviteSearch(q) {
+  const container = document.getElementById('invite-suggestions');
+  if (!container) return;
+  const cleanQ = q.trim().replace(/^@/, '');
+  if (!cleanQ) {
+    container.classList.add('hidden');
+    return;
+  }
+
+  const users = await CPBackend.searchUsers(cleanQ);
+  if (!users || !users.length) {
+    container.innerHTML = `<div class="p-2 text-xs text-gray-400">No registered users matching "@${esc(cleanQ)}"</div>`;
+    container.classList.remove('hidden');
+    return;
+  }
+
+  container.innerHTML = users.map(u => `
+    <div onclick="selectInviteUser('${esc(u.username)}')" class="flex items-center gap-2 p-2 hover:bg-gray-100 dark:hover:bg-[#262640] cursor-pointer text-xs border-b dark:border-[#3b3b5c] border-gray-100 last:border-0">
+      <img src="${esc(u.avatar || 'https://api.dicebear.com/7.x/bottts/svg?seed=' + u.username)}" class="w-5 h-5 rounded-full" />
+      <div>
+        <span class="font-bold">@${esc(u.username)}</span>
+        <span class="text-gray-400 ml-1">(${esc(u.displayName)})</span>
+      </div>
+    </div>
+  `).join('');
+  container.classList.remove('hidden');
+}
+
+function selectInviteUser(username) {
+  const inp = document.getElementById('invite-inp-username');
+  const suggestions = document.getElementById('invite-suggestions');
+  if (inp) inp.value = username;
+  if (suggestions) suggestions.classList.add('hidden');
+}
+
+async function handleInviteTeammate(e) {
+  e.preventDefault();
+  const username = document.getElementById('invite-inp-username')?.value.trim().replace(/^@/, '');
+  const groupId = document.getElementById('invite-inp-group-id')?.value.trim().toUpperCase();
+
+  if (!username || !groupId) return;
+
+  if (CPBackend.isOnline) {
+    const res = await CPBackend.inviteToGroup(username, groupId, currentUser?.id);
+    if (res.error) {
+      toast(res.error, 'error');
+      return;
+    }
+    toast(res.message || `Added @${username} to ${groupId}!`, 'success');
+    closeModal();
+    // Refresh group data from backend
+    await loadGroupFromBackend(groupId);
+    return;
+  }
+
+  // Fallback offline / local directory
+  const preset = inAppDirectory.find(d => d.inAppUsername.toLowerCase() === username.toLowerCase()) || {
+    name: username.charAt(0).toUpperCase() + username.slice(1),
+    handles: { codeforces: username, leetcode: username, atcoder: username, cses: '' }
+  };
+
+  const id = genId();
+  S.members.push({
+    id,
+    name: preset.name,
+    inAppUsername: username,
+    role: 'member',
+    handles: { ...preset.handles },
+    platformStatus: {}
+  });
+  S.memberAccepted[id] = new Set();
+  save();
+  closeModal();
+  renderAll();
+  toast(`Added @${username} to group!`, 'success');
+}
+
+function openCreateGroupModal() {
+  const modalBody = document.getElementById('modal-body');
+  modalBody.innerHTML = `
+    <div class="mb-4 text-center">
+      <div class="w-12 h-12 rounded-2xl bg-purple-600/10 text-purple-500 mx-auto flex items-center justify-center text-2xl mb-2">
+        <i class="fas fa-plus-circle"></i>
+      </div>
+      <h2 class="text-xl font-bold">Create New Team Group</h2>
+      <p class="text-xs dark:text-gray-400 text-gray-500 mt-1">
+        A <strong>Unique Group ID</strong> (e.g. GRP-4820) will automatically be generated. You will be set as Team Leader.
+      </p>
+    </div>
+
+    <form onsubmit="handleCreateGroupSubmit(event)" class="space-y-3">
+      <div>
+        <label class="block text-xs font-semibold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">Group Name</label>
+        <input id="create-grp-name" type="text" required placeholder="e.g. ICPC Team Alpha, Codeforces Div 1"
+          class="w-full text-xs px-3 py-2.5 dark:bg-[#1e1e2e] bg-white border dark:border-[#3b3b5c] border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-purple-500" />
+      </div>
+
+      <div class="pt-2 flex justify-end gap-2">
+        <button type="button" onclick="closeModal()" class="px-3 py-2 text-xs rounded-lg dark:bg-gray-700 bg-gray-200">Cancel</button>
+        <button type="submit" class="px-4 py-2 text-xs font-semibold rounded-lg bg-purple-600 hover:bg-purple-700 text-white transition shadow-sm">
+          <i class="fas fa-check mr-1"></i>Create Group
+        </button>
+      </div>
+    </form>
+  `;
+  showModal();
+}
+
+async function handleCreateGroupSubmit(e) {
+  e.preventDefault();
+  const name = document.getElementById('create-grp-name')?.value.trim();
+  if (!name) return;
+
+  if (CPBackend.isOnline) {
+    const res = await CPBackend.createGroup(name, currentUser?.id || 'usr_utkarsh');
+    if (res && res.success && res.group) {
+      S.currentGroupId = res.group.id;
+      S.currentGroupName = res.group.name;
+      S.teamName = res.group.name;
+      // Start fresh roster for new group with current user
+      S.members = [];
+      if (currentUser) {
+        const id = currentUser.id || genId();
+        S.members.push({
+          id,
+          name: currentUser.displayName,
+          inAppUsername: currentUser.inAppUsername,
+          role: 'leader',
+          handles: { ...currentUser.handles },
+          platformStatus: {}
+        });
+        S.memberAccepted[id] = new Set();
+      }
+      save();
+      closeModal();
+      renderAll();
+      toast(`Group created! Unique ID: ${res.group.id}`, 'success');
+      return;
+    }
+  }
+
+  // Local fallback
+  const newId = 'GRP-' + Math.floor(1000 + Math.random() * 9000);
+  S.currentGroupId = newId;
+  S.currentGroupName = name;
+  S.teamName = name;
+  save();
+  closeModal();
+  renderAll();
+  toast(`Group created locally! Unique ID: ${newId}`, 'success');
+}
+
+function openJoinGroupModal() {
+  const modalBody = document.getElementById('modal-body');
+  modalBody.innerHTML = `
+    <div class="mb-4 text-center">
+      <div class="w-12 h-12 rounded-2xl bg-indigo-600/10 text-indigo-500 mx-auto flex items-center justify-center text-2xl mb-2">
+        <i class="fas fa-sign-in-alt"></i>
+      </div>
+      <h2 class="text-xl font-bold">Join Group by Unique ID</h2>
+      <p class="text-xs dark:text-gray-400 text-gray-500 mt-1">
+        Enter the <strong>Unique Group ID</strong> (e.g. GRP-1001) provided by the group creator.
+      </p>
+    </div>
+
+    <form onsubmit="handleJoinGroupSubmit(event)" class="space-y-3">
+      <div>
+        <label class="block text-xs font-semibold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">Unique Group ID</label>
+        <input id="join-grp-id" type="text" required placeholder="e.g. GRP-1001"
+          class="w-full text-xs px-3 py-2.5 dark:bg-[#1e1e2e] bg-white border dark:border-[#3b3b5c] border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-mono font-bold uppercase" />
+      </div>
+
+      <div class="pt-2 flex justify-end gap-2">
+        <button type="button" onclick="closeModal()" class="px-3 py-2 text-xs rounded-lg dark:bg-gray-700 bg-gray-200">Cancel</button>
+        <button type="submit" class="px-4 py-2 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition shadow-sm">
+          <i class="fas fa-arrow-right mr-1"></i>Join Group
+        </button>
+      </div>
+    </form>
+  `;
+  showModal();
+}
+
+async function handleJoinGroupSubmit(e) {
+  e.preventDefault();
+  const gid = document.getElementById('join-grp-id')?.value.trim().toUpperCase();
+  if (!gid) return;
+
+  if (CPBackend.isOnline) {
+    const res = await CPBackend.joinGroup(gid, currentUser?.id || 'usr_utkarsh');
+    if (res.error) {
+      toast(res.error, 'error');
+      return;
+    }
+    toast(res.message || `Joined group ${gid}!`, 'success');
+    closeModal();
+    await loadGroupFromBackend(gid);
+    return;
+  }
+
+  S.currentGroupId = gid;
+  save();
+  closeModal();
+  renderAll();
+  toast(`Switched to Group ${gid}`, 'success');
+}
+
+async function loadGroupFromBackend(groupId) {
+  const data = await CPBackend.getGroup(groupId);
+  if (!data || !data.group) return;
+
+  S.currentGroupId = data.group.id;
+  S.currentGroupName = data.group.name;
+  S.teamName = data.group.name;
+
+  if (Array.isArray(data.members)) {
+    S.members = data.members.map(m => ({
+      id: m.id,
+      name: m.name,
+      inAppUsername: m.inAppUsername,
+      role: m.role || 'member',
+      avatar: m.avatar,
+      handles: m.handles || { codeforces: '', leetcode: '', atcoder: '', cses: '' },
+      platformStatus: {}
+    }));
+  }
+
+  if (data.problems) S.problems = { ...S.problems, ...data.problems };
+  if (data.submissions) S.submissions = { ...S.submissions, ...data.submissions };
+  if (data.memberAccepted) {
+    S.memberAccepted = {};
+    for (const mid in data.memberAccepted) {
+      S.memberAccepted[mid] = new Set(data.memberAccepted[mid]);
+    }
+  }
+
+  save();
+  renderAll();
 }
 
 function handleCustomSignIn(e) {
@@ -2803,6 +3472,7 @@ function renderStats() {
 // ── 18. RENDER ALL ──────────────────────────────────────────────────────────
 function renderAll() {
   renderTeamName();
+  renderActiveGroupBanner();
   renderAuthHeader();
   renderInAppChips();
   renderStats();
@@ -2812,13 +3482,24 @@ function renderAll() {
   renderSolo();
 }
 
+async function initBackend() {
+  const isUp = await CPBackend.checkHealth();
+  if (isUp) {
+    if (S.currentGroupId) {
+      await loadGroupFromBackend(S.currentGroupId);
+    }
+  }
+  renderActiveGroupBanner();
+}
+
 // ── 19. INIT ────────────────────────────────────────────────────────────────
-(function init() {
+(async function init() {
   loadTheme();
   initAuth();
   initDirectory();
   load();
   renderAll();
+  await initBackend();
 })();
 </script>
 </body>
