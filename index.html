@@ -665,6 +665,46 @@ const CPBackend = {
       console.warn('Backend syncSolves error', e);
       return null;
     }
+  },
+
+  async addGroupMember(groupId, memberData) {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/groups/${encodeURIComponent(groupId)}/members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(memberData)
+      });
+      return await res.json();
+    } catch (e) {
+      console.warn('Backend addGroupMember error', e);
+      return null;
+    }
+  },
+
+  async removeGroupMember(groupId, userId) {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`, {
+        method: 'DELETE'
+      });
+      return await res.json();
+    } catch (e) {
+      console.warn('Backend removeGroupMember error', e);
+      return null;
+    }
+  },
+
+  async updateGroupMember(groupId, userId, updateData) {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData)
+      });
+      return await res.json();
+    } catch (e) {
+      console.warn('Backend updateGroupMember error', e);
+      return null;
+    }
   }
 };
 
@@ -1182,7 +1222,7 @@ async function syncAll() {
 }
 
 // ── 10. TEAM MANAGEMENT ─────────────────────────────────────────────────────
-function handleAddMember(e) {
+async function handleAddMember(e) {
   e.preventDefault();
   const name = document.getElementById('inp-name').value.trim();
   if(!name) { toast('Enter a display name','warning'); return; }
@@ -1204,8 +1244,27 @@ function handleAddMember(e) {
   if (role === 'leader') {
     S.members.forEach(m => m.role = 'member');
   }
-  const id = genId();
-  S.members.push({ id, name, role, handles, platformStatus:{} });
+
+  let id = genId();
+  let inAppUsername = name.toLowerCase().replace(/[^a-z0-9_]/g, '') || ('user_' + id);
+  let avatar = `https://api.dicebear.com/7.x/bottts/svg?seed=${inAppUsername}`;
+
+  // Persist directly to backend SQLite database
+  if (CPBackend.isOnline && S.currentGroupId) {
+    const res = await CPBackend.addGroupMember(S.currentGroupId, {
+      name,
+      role: role === 'leader' ? 'leader' : 'teammate',
+      handles,
+      inAppUsername
+    });
+    if (res && res.success && res.member) {
+      id = res.member.id;
+      inAppUsername = res.member.inAppUsername;
+      avatar = res.member.avatar;
+    }
+  }
+
+  S.members.push({ id, name, inAppUsername, avatar, role, handles, platformStatus:{} });
   S.memberAccepted[id] = new Set();
   save(); renderAll();
   // Clear form
@@ -1225,6 +1284,12 @@ function removeMember(id) {
   for(const pid in S.submissions) delete S.submissions[pid][id];
   if (wasLeader && S.members.length > 0) {
     S.members[0].role = 'leader';
+    if (CPBackend.isOnline && S.currentGroupId) {
+      CPBackend.updateGroupMember(S.currentGroupId, S.members[0].id, { role: 'leader' });
+    }
+  }
+  if (CPBackend.isOnline && S.currentGroupId) {
+    CPBackend.removeGroupMember(S.currentGroupId, id);
   }
   save(); renderAll();
   toast(`Removed ${m.name}`,'info');
@@ -1235,11 +1300,14 @@ function promoteToLeader(id) {
   if (!m) return;
   S.members.forEach(x => x.role = 'member');
   m.role = 'leader';
+  if (CPBackend.isOnline && S.currentGroupId) {
+    CPBackend.updateGroupMember(S.currentGroupId, id, { role: 'leader' });
+  }
   save(); renderAll();
   toast(`${m.name} is now the Team Leader! 👑`, 'success');
 }
 
-function loadDemoTeam() {
+async function loadDemoTeam() {
   const demos = [
     { name:'Tourist', role:'leader', handles:{ codeforces:'tourist', leetcode:'tourist', atcoder:'tourist', cses:'' } },
     { name:'Benq',    role:'member', handles:{ codeforces:'Benq',    leetcode:'Benq',    atcoder:'Benq',    cses:'' } },
@@ -1251,8 +1319,23 @@ function loadDemoTeam() {
       return false;
     });
     if(exists) continue;
-    const id = genId();
-    S.members.push({ id, name:d.name, role:d.role, handles:{...d.handles}, platformStatus:{} });
+    let id = genId();
+    let inAppUsername = d.name.toLowerCase().replace(/[^a-z0-9_]/g, '');
+    let avatar = `https://api.dicebear.com/7.x/bottts/svg?seed=${inAppUsername}`;
+    if (CPBackend.isOnline && S.currentGroupId) {
+      const res = await CPBackend.addGroupMember(S.currentGroupId, {
+        name: d.name,
+        role: d.role === 'leader' ? 'leader' : 'teammate',
+        handles: d.handles,
+        inAppUsername
+      });
+      if (res && res.success && res.member) {
+        id = res.member.id;
+        inAppUsername = res.member.inAppUsername;
+        avatar = res.member.avatar;
+      }
+    }
+    S.members.push({ id, name:d.name, inAppUsername, avatar, role:d.role, handles:{...d.handles}, platformStatus:{} });
     S.memberAccepted[id] = new Set();
   }
   save(); renderAll();
@@ -1862,6 +1945,16 @@ function handleSaveMemberEdit(e, id) {
   save();
   renderAll();
   closeModal();
+
+  // Persist update directly to backend SQLite database
+  if (CPBackend.isOnline && S.currentGroupId) {
+    CPBackend.updateGroupMember(S.currentGroupId, id, {
+      name: newName,
+      role: newRole === 'leader' ? 'leader' : 'teammate',
+      handles: newHandles
+    });
+  }
+
   toast(`Updated profile for ${newName} (${newRole === 'leader' ? 'Team Leader 👑' : 'Teammate'})`, 'success');
   return true;
 }
@@ -1905,9 +1998,12 @@ function confirmRemoveMember(id) {
   showModal();
 }
 
-function executeRemoveMember(id) {
+async function executeRemoveMember(id) {
   const m = S.members.find(x => x.id === id);
   const name = m ? m.name : 'Teammate';
+  if (CPBackend.isOnline && S.currentGroupId) {
+    await CPBackend.removeGroupMember(S.currentGroupId, id);
+  }
   removeMember(id);
   closeModal();
 }
@@ -2017,11 +2113,113 @@ function renderAuthHeader() {
   }
 }
 
+window.handleGoogleCredentialResponse = async function(response) {
+  try {
+    if (!response || !response.credential) {
+      toast('Google Identity did not return a valid credential token', 'error');
+      return;
+    }
+    toast('Verifying Google credentials with Google OAuth API…', 'info');
+    const res = await CPBackend.googleAuth({ credential: response.credential });
+    if (res && res.success && res.user) {
+      applySignedInUser(res.user);
+    } else {
+      toast(res?.error || 'Google authentication failed', 'error');
+    }
+  } catch (err) {
+    console.error('Google credential error:', err);
+    toast('Error verifying Google credentials with backend', 'error');
+  }
+};
+
+function renderGoogleButton() {
+  const container = document.getElementById('g_official_btn_container');
+  if (!container) return;
+  const savedClientId = localStorage.getItem('cp_google_client_id') || '407408718192-gm05v62v0147g12m6q7uup05l752lfl0.apps.googleusercontent.com';
+  if (window.google?.accounts?.id) {
+    try {
+      google.accounts.id.initialize({
+        client_id: savedClientId,
+        callback: window.handleGoogleCredentialResponse,
+        auto_select: false,
+        cancel_on_tap_outside: true
+      });
+      google.accounts.id.renderButton(container, {
+        theme: document.documentElement.classList.contains('dark') ? 'filled_black' : 'outline',
+        size: 'large',
+        type: 'standard',
+        shape: 'rectangular',
+        text: 'signin_with',
+        logo_alignment: 'left',
+        width: 300
+      });
+      return;
+    } catch (e) {
+      console.warn('Google button init warning:', e);
+    }
+  }
+  // Fallback if Google library blocked by privacy shield
+  container.innerHTML = `
+    <button onclick="handleGoogleSignIn('Google User', 'developer@gmail.com', '')" class="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs shadow-sm transition">
+      <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24"><path fill="#ffffff" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#ffffff" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#ffffff" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="#ffffff" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
+      <span>Continue with Google Sign-In</span>
+    </button>
+  `;
+}
+
+function saveGoogleClientId(val) {
+  const trimmed = (val || '').trim();
+  if (trimmed) {
+    localStorage.setItem('cp_google_client_id', trimmed);
+    toast('Google Client ID saved! Re-rendering Google button…', 'success');
+    renderGoogleButton();
+  }
+}
+
+function toggleGConfig() {
+  const el = document.getElementById('g-config-box');
+  if (el) el.classList.toggle('hidden');
+}
+
+function applySignedInUser(backendUser) {
+  const inAppUsername = backendUser.username;
+  currentUser = {
+    id: backendUser.id,
+    displayName: backendUser.displayName || backendUser.name,
+    email: backendUser.email,
+    inAppUsername: inAppUsername,
+    avatar: backendUser.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${inAppUsername}`,
+    provider: 'google',
+    handles: backendUser.handles || {
+      codeforces: '',
+      leetcode: '',
+      atcoder: '',
+      cses: ''
+    }
+  };
+
+  saveAuth();
+  closeModal();
+  renderAll();
+
+  // If user has not connected handles yet, immediately prompt them to connect handles!
+  const hasHandles = currentUser.handles?.codeforces || currentUser.handles?.leetcode || currentUser.handles?.atcoder || currentUser.handles?.cses;
+  if (!hasHandles) {
+    setTimeout(() => {
+      openConnectHandlesModal();
+    }, 400);
+    toast(`Welcome, ${currentUser.displayName}! Assigned UserId: @${inAppUsername}. Please connect your handles.`, 'info');
+  } else {
+    toast(`Welcome back, ${currentUser.displayName}! Signed in as @${inAppUsername}`, 'success');
+  }
+}
+
 function openAuthModal() {
   const modalBody = document.getElementById('modal-body');
   if (!currentUser) {
+    const curClientId = localStorage.getItem('cp_google_client_id') || '407408718192-gm05v62v0147g12m6q7uup05l752lfl0.apps.googleusercontent.com';
     modalBody.innerHTML = `
-      <div class="mb-4 text-center">
+      <div class="mb-3 text-center">
         <div class="w-12 h-12 rounded-2xl bg-blue-600/10 text-blue-500 mx-auto flex items-center justify-center text-2xl mb-2">
           <svg class="w-7 h-7" viewBox="0 0 24 24">
             <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -2030,21 +2228,48 @@ function openAuthModal() {
             <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
           </svg>
         </div>
-        <h2 class="text-xl font-bold">Sign In / Register with Google</h2>
+        <h2 class="text-xl font-bold">Sign In with Google</h2>
         <p class="text-xs dark:text-gray-400 text-gray-500 mt-1">
           Anyone can sign up with their Google account and will automatically be assigned a personalized <strong>UserId (@handle)</strong> in the database.
         </p>
       </div>
 
-      <div class="space-y-3 mb-5">
+      <!-- Official Google Sign-In Button Container -->
+      <div class="mb-4">
+        <label class="block text-center text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-2">Google Identity Services (Official API)</label>
+        <div id="g_official_btn_container" class="flex justify-center min-h-[44px]"></div>
+        
+        <div class="text-center mt-2">
+          <button type="button" onclick="toggleGConfig()" class="text-[11px] text-blue-400 hover:underline">
+            <i class="fas fa-cog mr-1"></i>Google OAuth Client ID Settings
+          </button>
+        </div>
+        <div id="g-config-box" class="hidden mt-2 p-2.5 rounded-lg dark:bg-[#1e1e2e] bg-gray-100 border dark:border-[#3b3b5c] border-gray-200 text-xs">
+          <label class="block text-[10px] uppercase font-bold text-gray-400 mb-1">Google OAuth 2.0 Web Client ID</label>
+          <div class="flex gap-1.5">
+            <input id="cfg-google-client-id" type="text" value="${esc(curClientId)}" placeholder="xxxx.apps.googleusercontent.com"
+              class="flex-1 text-[11px] px-2 py-1 rounded dark:bg-[#262640] bg-white border dark:border-[#3b3b5c] border-gray-300 font-mono outline-none" />
+            <button onclick="saveGoogleClientId(document.getElementById('cfg-google-client-id').value)" class="px-2.5 py-1 text-[11px] bg-blue-600 hover:bg-blue-700 text-white font-medium rounded transition">Save</button>
+          </div>
+          <p class="text-[10px] text-gray-400 mt-1">From Google Cloud Console &rarr; APIs & Services &rarr; Credentials.</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 my-3">
+        <div class="flex-1 border-t dark:border-[#3b3b5c] border-gray-200"></div>
+        <span class="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Or Instant Google Sign-Up</span>
+        <div class="flex-1 border-t dark:border-[#3b3b5c] border-gray-200"></div>
+      </div>
+
+      <div class="space-y-3 mb-4">
         <form onsubmit="handleGoogleAuthSubmit(event)" class="space-y-3">
           <div>
-            <label class="block text-xs font-semibold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">Your Google Name</label>
+            <label class="block text-xs font-semibold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">Google Account Name</label>
             <input id="inp-g-name" type="text" required placeholder="e.g. Utkarsh Tuwani" value="Utkarsh Tuwani"
               class="w-full text-xs dark:bg-[#1e1e2e] bg-white border dark:border-[#3b3b5c] border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div>
-            <label class="block text-xs font-semibold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">Your Google Email</label>
+            <label class="block text-xs font-semibold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">Google Account Email</label>
             <input id="inp-g-email" type="email" required placeholder="e.g. utkarshtuwani@gmail.com" value="utkarshtuwani@gmail.com"
               class="w-full text-xs dark:bg-[#1e1e2e] bg-white border dark:border-[#3b3b5c] border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
@@ -2058,20 +2283,15 @@ function openAuthModal() {
             <p class="text-[11px] dark:text-gray-500 text-gray-400 mt-0.5">Teammates can invite you to their group using this unique @username.</p>
           </div>
 
-          <button type="submit" class="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs shadow-sm transition">
-            <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-              <path fill="#ffffff" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-              <path fill="#ffffff" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-              <path fill="#ffffff" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-              <path fill="#ffffff" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-            </svg>
-            <span>Continue with Google Sign-In</span>
+          <button type="submit" class="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs shadow-sm transition">
+            <i class="fas fa-user-check"></i>
+            <span>Register / Sign In & Assign UserId</span>
           </button>
         </form>
 
         <div class="flex items-center gap-2 my-2">
           <div class="flex-1 border-t dark:border-[#3b3b5c] border-gray-200"></div>
-          <span class="text-[11px] uppercase tracking-wider text-gray-400 font-medium">Or Quick Demo Login</span>
+          <span class="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Quick Teammate Login</span>
           <div class="flex-1 border-t dark:border-[#3b3b5c] border-gray-200"></div>
         </div>
 
@@ -2087,6 +2307,7 @@ function openAuthModal() {
         </div>
       </div>
     `;
+    setTimeout(renderGoogleButton, 50);
   } else {
     modalBody.innerHTML = `
       <div class="mb-4">
@@ -2170,13 +2391,12 @@ async function handleGoogleSignIn(name, email, defaultUsername) {
   }
 
   const inAppUsername = backendUser ? backendUser.username : (defaultUsername || email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, ''));
-  currentUser = {
+  const user = {
     id: backendUser ? backendUser.id : ('usr_' + genId()),
     displayName: backendUser ? backendUser.displayName : name,
     email: email,
-    inAppUsername: inAppUsername,
+    username: inAppUsername,
     avatar: backendUser ? backendUser.avatar : `https://api.dicebear.com/7.x/bottts/svg?seed=${inAppUsername}`,
-    provider: 'google',
     handles: backendUser && backendUser.handles ? backendUser.handles : {
       codeforces: '',
       leetcode: '',
@@ -2184,21 +2404,7 @@ async function handleGoogleSignIn(name, email, defaultUsername) {
       cses: ''
     }
   };
-
-  saveAuth();
-  closeModal();
-  renderAll();
-
-  // If user has not connected handles yet, immediately prompt them to connect handles!
-  const hasHandles = currentUser.handles.codeforces || currentUser.handles.leetcode || currentUser.handles.atcoder || currentUser.handles.cses;
-  if (!hasHandles) {
-    setTimeout(() => {
-      openConnectHandlesModal();
-    }, 400);
-    toast(`Welcome, ${name}! Assigned UserId: @${inAppUsername}. Please connect your handles.`, 'info');
-  } else {
-    toast(`Welcome back, ${name}! Signed in as @${inAppUsername}`, 'success');
-  }
+  applySignedInUser(user);
 }
 
 // ── CONNECT HANDLES MODAL ───────────────────────────────────────────────────
@@ -2661,18 +2867,28 @@ function handleSaveUserProfile(e) {
   currentUser.avatar = `https://api.dicebear.com/7.x/bottts/svg?seed=${username}`;
   currentUser.handles = handles;
 
+  if (CPBackend.isOnline && currentUser.id) {
+    CPBackend.saveHandles(currentUser.id, handles);
+  }
+
   const teamMember = S.members.find(m => (m.inAppUsername && m.inAppUsername.toLowerCase() === username) || m.id === currentUser.teamMemberId);
   if (teamMember) {
     teamMember.name = name;
     teamMember.inAppUsername = username;
     teamMember.handles = { ...handles };
+    if (CPBackend.isOnline && S.currentGroupId) {
+      CPBackend.updateGroupMember(S.currentGroupId, teamMember.id, {
+        name,
+        handles
+      });
+    }
     save();
   }
 
   saveAuth();
   closeModal();
   renderAll();
-  toast('Profile and platform handles updated!', 'success');
+  toast('Profile and platform handles updated in database!', 'success');
 }
 
 function handleSignOut() {
@@ -2682,11 +2898,11 @@ function handleSignOut() {
   toast('Signed out', 'info');
 }
 
-function addCurrentUserToTeam() {
+async function addCurrentUserToTeam() {
   if (!currentUser) return;
   const username = currentUser.inAppUsername;
 
-  const exists = S.members.some(m => (m.inAppUsername && m.inAppUsername.toLowerCase() === username.toLowerCase()) || m.name.toLowerCase() === currentUser.displayName.toLowerCase());
+  const exists = S.members.some(m => (m.inAppUsername && m.inAppUsername.toLowerCase() === username.toLowerCase()) || m.id === currentUser.id || m.name.toLowerCase() === currentUser.displayName.toLowerCase());
   if (exists) {
     toast(`You (@${username}) are already in the team workspace!`, 'warning');
     closeModal();
@@ -2694,7 +2910,19 @@ function addCurrentUserToTeam() {
   }
 
   const role = S.members.length === 0 ? 'leader' : 'member';
-  const id = genId();
+  let id = currentUser.id || genId();
+  if (CPBackend.isOnline && S.currentGroupId) {
+    const res = await CPBackend.addGroupMember(S.currentGroupId, {
+      name: currentUser.displayName,
+      role: role === 'leader' ? 'leader' : 'teammate',
+      handles: currentUser.handles || {},
+      inAppUsername: username
+    });
+    if (res && res.success && res.member) {
+      id = res.member.id;
+    }
+  }
+
   currentUser.teamMemberId = id;
   S.members.push({
     id,
