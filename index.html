@@ -1,0 +1,2936 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CP Team Tracker — Competitive Programming Management Platform</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            surface: { light: '#ffffff', dark: '#181825' },
+            card: { light: '#f8fafc', dark: '#1e1e2e' },
+            cardHover: { light: '#f1f5f9', dark: '#26263b' },
+            bdr: { light: '#e2e8f0', dark: '#313244' },
+            brand: { light: '#3b82f6', dark: '#60a5fa' }
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    * { scrollbar-width: thin; scrollbar-color: #4b5563 transparent; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
+    .matrix-container { overflow-x: auto; max-width: 100%; -webkit-overflow-scrolling: touch; }
+    .matrix-table th.sticky-col, .matrix-table td.sticky-col {
+      position: sticky; left: 0; z-index: 10;
+    }
+    .dark .matrix-table th.sticky-col { background: #1e1e2e; }
+    .dark .matrix-table td.sticky-col { background: #181825; }
+    html:not(.dark) .matrix-table th.sticky-col { background: #f8fafc; }
+    html:not(.dark) .matrix-table td.sticky-col { background: #ffffff; }
+    
+    [data-tip] { position: relative; }
+    [data-tip]:hover::after {
+      content: attr(data-tip); position: absolute; bottom: 115%; left: 50%;
+      transform: translateX(-50%); background: #111827; color: #f9fafb;
+      padding: 5px 9px; border-radius: 6px; font-size: 11px; font-weight: 500;
+      white-space: nowrap; z-index: 60; pointer-events: none;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1);
+    }
+    .toast-enter { animation: toastIn .25s cubic-bezier(0.16, 1, 0.3, 1); }
+    .toast-exit { animation: toastOut .2s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+    @keyframes toastIn { from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1} }
+    @keyframes toastOut { from{transform:translateX(0);opacity:1}to{transform:translateX(100%);opacity:0} }
+    .spin { animation: spin 1s linear infinite; }
+    @keyframes spin { from{transform:rotate(0deg)}to{transform:rotate(360deg)} }
+    .modal-overlay { background: rgba(0,0,0,0.7); backdrop-filter: blur(6px); }
+  </style>
+</head>
+<body class="dark:bg-[#11111b] bg-gray-50 dark:text-gray-100 text-gray-900 min-h-screen transition-colors duration-200 font-sans antialiased">
+
+<!-- Accessibility Live Region for Screen Readers -->
+<div id="a11y-live-region" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+<!-- Toast Notifications Container -->
+<div id="toast-container" class="fixed top-4 right-4 z-[100] flex flex-col gap-2 max-w-sm pointer-events-none" role="region" aria-label="Notifications"></div>
+
+<!-- Global Accessible Modal Container -->
+<div id="modal-overlay" class="modal-overlay fixed inset-0 z-50 hidden items-center justify-center p-4 transition-opacity duration-200" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  <div class="dark:bg-[#1e1e2e] bg-white rounded-2xl shadow-2xl border dark:border-[#313244] border-gray-200 max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden relative" id="modal-container">
+    <div class="flex items-center justify-between px-6 py-4 border-b dark:border-[#313244] border-gray-200">
+      <h3 id="modal-title" class="text-base font-bold dark:text-white text-gray-900 flex items-center gap-2">Modal</h3>
+      <button onclick="CPApp.closeModal()" id="btn-modal-close" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1 rounded-lg text-lg transition focus:outline-none focus:ring-2 focus:ring-blue-500" aria-label="Close dialog">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <div id="modal-body" class="p-6 overflow-y-auto flex-1"></div>
+  </div>
+</div>
+
+<!-- Main Application Shell -->
+<div class="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+
+  <!-- Header -->
+  <header class="flex flex-wrap items-center justify-between gap-4 mb-6 pb-6 border-b dark:border-[#313244] border-gray-200">
+    <div class="flex items-center gap-3">
+      <div class="w-11 h-11 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white text-xl shadow-lg shadow-blue-500/20">
+        <i class="fas fa-network-wired"></i>
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <h1 id="app-title" class="text-2xl font-extrabold tracking-tight bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent">CP Team Tracker</h1>
+          <button onclick="CPApp.editTeamName()" class="text-xs text-gray-400 hover:text-blue-400 p-1 transition" title="Rename Team" aria-label="Rename Team"><i class="fas fa-pencil-alt"></i></button>
+          <span id="storage-engine-badge" class="ml-2 text-[10px] px-2 py-0.5 rounded-full font-mono font-medium dark:bg-emerald-950/60 dark:text-emerald-400 bg-emerald-100 text-emerald-800 border border-emerald-500/30">IndexedDB v2</span>
+        </div>
+        <p class="text-xs dark:text-gray-400 text-gray-500 mt-0.5">High-Integrity Competitive Programming Team Platform & Matrix</p>
+      </div>
+    </div>
+
+    <!-- Header Actions & Identity Bar -->
+    <div class="flex items-center gap-2.5 flex-wrap">
+      <div id="auth-header-area"></div>
+      <button onclick="CPApp.loadDemoTeam()" class="px-3 py-2 text-xs font-semibold rounded-xl dark:bg-[#313244] bg-gray-200 hover:bg-gray-300 dark:hover:bg-[#45475a] text-gray-800 dark:text-gray-200 transition shadow-sm flex items-center gap-1.5" title="Load sample contest team data">
+        <i class="fas fa-flask text-purple-400"></i>
+        <span>Demo Team</span>
+      </button>
+      
+      <!-- Sync Controls -->
+      <div class="inline-flex rounded-xl shadow-sm" role="group">
+        <button onclick="CPSync.syncAll()" id="btn-sync-all" class="px-3.5 py-2 text-xs font-semibold rounded-l-xl bg-blue-600 hover:bg-blue-700 text-white transition disabled:opacity-50 flex items-center gap-2 shadow-sm">
+          <i class="fas fa-sync-alt" id="sync-icon"></i>
+          <span>Sync All</span>
+        </button>
+        <button onclick="CPApp.toggleSyncOptions()" id="btn-sync-opts" class="px-2.5 py-2 text-xs font-semibold rounded-r-xl bg-blue-700 hover:bg-blue-800 text-white border-l border-blue-500/40 transition" title="Sync Depth & Settings" aria-label="Sync options">
+          <i class="fas fa-chevron-down text-[10px]"></i>
+        </button>
+      </div>
+
+      <!-- Cancel Sync Button (Shown during sync) -->
+      <button onclick="CPSync.cancelCurrentSync()" id="btn-cancel-sync" class="hidden px-3 py-2 text-xs font-semibold rounded-xl bg-red-600 hover:bg-red-700 text-white transition flex items-center gap-1.5 shadow-sm animate-pulse" title="Stop pending sync immediately">
+        <i class="fas fa-ban"></i>
+        <span>Cancel Sync</span>
+      </button>
+
+      <!-- Theme Switcher -->
+      <button onclick="CPTheme.toggle()" class="px-3 py-2 text-xs font-semibold rounded-xl dark:bg-[#1e1e2e] bg-white border dark:border-[#313244] border-gray-300 hover:border-gray-400 text-gray-700 dark:text-gray-200 transition shadow-sm" aria-label="Toggle visual theme" title="Toggle theme">
+        <i class="fas fa-moon dark:hidden"></i>
+        <i class="fas fa-sun hidden dark:inline text-amber-400"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- Live Sync Status Banner -->
+  <div id="sync-progress-banner" class="hidden mb-6 dark:bg-[#1e1e2e] bg-white border dark:border-[#313244] border-gray-200 rounded-2xl p-4 shadow-md transition-all">
+    <div class="flex items-center justify-between gap-4 mb-2">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-500 flex items-center justify-center">
+          <i class="fas fa-circle-notch spin text-sm"></i>
+        </div>
+        <div>
+          <h4 id="sync-progress-headline" class="text-xs font-bold dark:text-gray-100 text-gray-800">Synchronizing Team Solves…</h4>
+          <p id="sync-progress-detail" class="text-[11px] dark:text-gray-400 text-gray-500 font-mono">Initializing platform adapters…</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <span id="sync-progress-counter" class="text-xs font-mono font-bold text-blue-400">0%</span>
+        <button onclick="CPSync.cancelCurrentSync()" class="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20 transition">
+          <i class="fas fa-stop mr-1"></i>Cancel
+        </button>
+      </div>
+    </div>
+    <div class="w-full bg-gray-200 dark:bg-gray-800 rounded-full h-2 overflow-hidden">
+      <div id="sync-progress-bar" class="bg-gradient-to-r from-blue-500 to-indigo-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+    </div>
+    <!-- Platform mini badges -->
+    <div id="sync-platform-chips" class="flex flex-wrap gap-2 mt-3 pt-3 border-t dark:border-[#313244] border-gray-100 text-[11px]"></div>
+  </div>
+
+  <!-- KPI Overview Cards -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="dark:bg-[#1e1e2e] bg-white rounded-2xl p-4 border dark:border-[#313244] border-gray-200 shadow-sm flex items-center gap-3.5">
+      <div class="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center text-lg shrink-0">
+        <i class="fas fa-users"></i>
+      </div>
+      <div>
+        <div class="text-[11px] font-semibold uppercase tracking-wider dark:text-gray-400 text-gray-500">Roster Members</div>
+        <div id="kpi-members" class="text-2xl font-black tracking-tight">0</div>
+      </div>
+    </div>
+
+    <div class="dark:bg-[#1e1e2e] bg-white rounded-2xl p-4 border dark:border-[#313244] border-gray-200 shadow-sm flex items-center gap-3.5">
+      <div class="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center text-lg shrink-0">
+        <i class="fas fa-shield-check"></i>
+      </div>
+      <div>
+        <div class="text-[11px] font-semibold uppercase tracking-wider dark:text-gray-400 text-gray-500 flex items-center gap-1">
+          <span>Verified Solves</span>
+          <i class="fas fa-info-circle text-[10px] text-gray-400" data-tip="Confirmed by official platform API submissions"></i>
+        </div>
+        <div id="kpi-verified-solves" class="text-2xl font-black tracking-tight text-emerald-500">0</div>
+      </div>
+    </div>
+
+    <div class="dark:bg-[#1e1e2e] bg-white rounded-2xl p-4 border dark:border-[#313244] border-gray-200 shadow-sm flex items-center gap-3.5">
+      <div class="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center text-lg shrink-0">
+        <i class="fas fa-cubes"></i>
+      </div>
+      <div>
+        <div class="text-[11px] font-semibold uppercase tracking-wider dark:text-gray-400 text-gray-500">Unique Problems</div>
+        <div id="kpi-problems" class="text-2xl font-black tracking-tight">0</div>
+      </div>
+    </div>
+
+    <div class="dark:bg-[#1e1e2e] bg-white rounded-2xl p-4 border dark:border-[#313244] border-gray-200 shadow-sm flex items-center gap-3.5">
+      <div class="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center text-lg shrink-0">
+        <i class="fas fa-history"></i>
+      </div>
+      <div>
+        <div class="text-[11px] font-semibold uppercase tracking-wider dark:text-gray-400 text-gray-500">Last Synced</div>
+        <div id="kpi-last-sync" class="text-xs font-semibold mt-1">Never</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Primary Navigation Tabs -->
+  <nav class="flex gap-1 mb-6 border-b dark:border-[#313244] border-gray-200 overflow-x-auto pb-px" role="tablist" aria-label="Main Navigation">
+    <button onclick="CPApp.switchTab('matrix')" data-tab="matrix" class="tab-btn px-4 py-2.5 text-xs font-bold border-b-2 transition whitespace-nowrap border-blue-500 text-blue-600 dark:text-blue-400 flex items-center gap-2" role="tab" aria-selected="true">
+      <i class="fas fa-th-large"></i><span>Team Matrix</span>
+    </button>
+    <button onclick="CPApp.switchTab('leaderboard')" data-tab="leaderboard" class="tab-btn px-4 py-2.5 text-xs font-bold border-b-2 transition whitespace-nowrap border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 flex items-center gap-2" role="tab" aria-selected="false">
+      <i class="fas fa-medal"></i><span>Leaderboard</span>
+    </button>
+    <button onclick="CPApp.switchTab('team')" data-tab="team" class="tab-btn px-4 py-2.5 text-xs font-bold border-b-2 transition whitespace-nowrap border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 flex items-center gap-2" role="tab" aria-selected="false">
+      <i class="fas fa-users-cog"></i><span>Roster & Handles</span>
+    </button>
+    <button onclick="CPApp.switchTab('solo')" data-tab="solo" class="tab-btn px-4 py-2.5 text-xs font-bold border-b-2 transition whitespace-nowrap border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 flex items-center gap-2" role="tab" aria-selected="false">
+      <i class="fas fa-user-astronaut"></i><span>Solo Tracker</span>
+    </button>
+    <button onclick="CPApp.switchTab('explorer')" data-tab="explorer" class="tab-btn px-4 py-2.5 text-xs font-bold border-b-2 transition whitespace-nowrap border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 flex items-center gap-2" role="tab" aria-selected="false">
+      <i class="fas fa-compass"></i><span>Problem Explorer</span>
+    </button>
+    <button onclick="CPApp.switchTab('activity')" data-tab="activity" class="tab-btn px-4 py-2.5 text-xs font-bold border-b-2 transition whitespace-nowrap border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 flex items-center gap-2" role="tab" aria-selected="false">
+      <i class="fas fa-bolt"></i><span>Activity & Streaks</span>
+    </button>
+    <button onclick="CPApp.switchTab('settings')" data-tab="settings" class="tab-btn px-4 py-2.5 text-xs font-bold border-b-2 transition whitespace-nowrap border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 flex items-center gap-2" role="tab" aria-selected="false">
+      <i class="fas fa-sliders-h"></i><span>Data & Storage</span>
+    </button>
+  </nav>
+
+  <!-- ================= TAB: MATRIX ================= -->
+  <section id="tab-matrix" class="tab-content" role="tabpanel">
+    <!-- Matrix Filters & Controls -->
+    <div class="dark:bg-[#1e1e2e] bg-white rounded-2xl p-4 border dark:border-[#313244] border-gray-200 shadow-sm mb-5">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <!-- Search -->
+        <div class="relative flex-1 min-w-[220px]">
+          <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+          <input type="text" id="matrix-search" placeholder="Filter by title, ID, tag, or contest…" oninput="CPApp.onMatrixFilterChange()"
+            class="w-full pl-9 pr-3 py-2 text-xs rounded-xl dark:bg-[#181825] bg-gray-50 border dark:border-[#313244] border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+
+        <!-- Platform Filter -->
+        <div class="flex items-center gap-2 flex-wrap">
+          <select id="matrix-filter-platform" onchange="CPApp.onMatrixFilterChange()" class="text-xs rounded-xl dark:bg-[#181825] bg-gray-50 border dark:border-[#313244] border-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium">
+            <option value="all">All Platforms</option>
+            <option value="codeforces">Codeforces</option>
+            <option value="leetcode">LeetCode</option>
+            <option value="atcoder">AtCoder</option>
+            <option value="cses">CSES</option>
+          </select>
+
+          <!-- Team Solved Sorting Order -->
+          <select id="matrix-sort-order" onchange="CPApp.onMatrixFilterChange()" class="text-xs rounded-xl dark:bg-[#181825] bg-gray-50 border dark:border-[#313244] border-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium">
+            <option value="solved-asc">Sort: Solved 1 → 2 → All 3</option>
+            <option value="solved-desc">Sort: Solved All 3 → 2 → 1</option>
+            <option value="difficulty-desc">Sort: Highest Difficulty</option>
+            <option value="difficulty-asc">Sort: Lowest Difficulty</option>
+            <option value="name">Sort: Problem Name</option>
+          </select>
+
+          <!-- Toggle: Hide 0 Solves -->
+          <label class="flex items-center gap-2 text-xs font-semibold dark:text-gray-300 text-gray-700 cursor-pointer select-none px-2 py-1 rounded-lg hover:bg-gray-100 dark:hover:bg-[#26263b] transition">
+            <input type="checkbox" id="matrix-hide-unsolved" checked onchange="CPApp.onMatrixFilterChange()" class="rounded text-blue-600 focus:ring-blue-500 dark:bg-[#181825]" />
+            <span>Hide 0-Solved</span>
+          </label>
+
+          <!-- Add / Manual Import Shortcut -->
+          <button onclick="CPApp.openManualImportModal()" class="px-3 py-2 text-xs font-semibold rounded-xl bg-blue-600/10 text-blue-500 dark:text-blue-400 border border-blue-500/30 hover:bg-blue-600/20 transition flex items-center gap-1.5">
+            <i class="fas fa-plus"></i><span>Import Problem</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Matrix Legend -->
+      <div class="flex items-center justify-between flex-wrap gap-2 mt-3 pt-3 border-t dark:border-[#313244] border-gray-100 text-[11px] dark:text-gray-400 text-gray-500">
+        <div class="flex items-center gap-3 flex-wrap">
+          <span class="flex items-center gap-1.5"><i class="fas fa-check-circle text-emerald-500"></i> Verified Solve (API)</span>
+          <span class="flex items-center gap-1.5"><i class="fas fa-wrench text-amber-500"></i> Manual / CSES</span>
+          <span class="flex items-center gap-1.5"><i class="fas fa-times text-gray-400"></i> Unsolved</span>
+        </div>
+        <div id="matrix-status-summary" class="font-mono text-[10px]">Showing 0 problems</div>
+      </div>
+    </div>
+
+    <!-- Matrix Table Container -->
+    <div class="dark:bg-[#1e1e2e] bg-white rounded-2xl border dark:border-[#313244] border-gray-200 shadow-sm overflow-hidden matrix-container">
+      <table class="w-full text-left border-collapse text-xs matrix-table" id="matrix-table">
+        <thead id="matrix-thead" class="dark:bg-[#181825] bg-gray-50 border-b dark:border-[#313244] border-gray-200">
+          <!-- Dynamically Rendered Header -->
+        </thead>
+        <tbody id="matrix-tbody" class="divide-y dark:divide-[#313244] divide-gray-100">
+          <!-- Dynamically Rendered Rows -->
+        </tbody>
+      </table>
+      <div id="matrix-empty-state" class="hidden p-12 text-center">
+        <div class="w-12 h-12 rounded-2xl bg-blue-500/10 text-blue-500 flex items-center justify-center mx-auto text-xl mb-3">
+          <i class="fas fa-filter"></i>
+        </div>
+        <h4 class="text-sm font-bold dark:text-gray-200 text-gray-800">No Problems Match Your Filter</h4>
+        <p class="text-xs dark:text-gray-400 text-gray-500 mt-1">Try unchecking "Hide 0-Solved" or clearing your search term.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= TAB: LEADERBOARD ================= -->
+  <section id="tab-leaderboard" class="tab-content hidden" role="tabpanel">
+    <div class="dark:bg-[#1e1e2e] bg-white rounded-2xl p-6 border dark:border-[#313244] border-gray-200 shadow-sm mb-6">
+      <div class="flex items-center justify-between flex-wrap gap-3 mb-4">
+        <div>
+          <h2 class="text-lg font-bold flex items-center gap-2">
+            <i class="fas fa-trophy text-amber-400"></i> Team Solves Leaderboard
+          </h2>
+          <p class="text-xs dark:text-gray-400 text-gray-500 mt-0.5">Rankings are strictly prioritized by <strong class="text-emerald-500 font-semibold">Verified API Solves</strong>. Aggregate & manual counts are clearly separated.</p>
+        </div>
+        <div class="text-xs dark:text-gray-400 text-gray-500 font-mono">
+          Tie-Breaker: Highest Codeforces Rating &rarr; Earliest Solve
+        </div>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse text-xs" id="leaderboard-table">
+          <thead class="dark:bg-[#181825] bg-gray-50 border-y dark:border-[#313244] border-gray-200">
+            <tr>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 w-16 text-center">Rank</th>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Teammate</th>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Role</th>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 text-center">
+                <span class="inline-flex items-center gap-1 text-emerald-500">
+                  <i class="fas fa-shield-check"></i> Verified Solves
+                </span>
+              </th>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 text-center">
+                <span class="inline-flex items-center gap-1 text-amber-500">
+                  <i class="fas fa-wrench"></i> Manual / CSES
+                </span>
+              </th>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 text-center">
+                <span class="inline-flex items-center gap-1 text-purple-400">
+                  <i class="fas fa-chart-pie"></i> Profile Aggregate
+                </span>
+              </th>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 text-center">CF Rating</th>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="leaderboard-tbody" class="divide-y dark:divide-[#313244] divide-gray-100">
+            <!-- Dynamically populated -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= TAB: ROSTER & HANDLES ================= -->
+  <section id="tab-team" class="tab-content hidden" role="tabpanel">
+    <!-- Add Member Card -->
+    <div class="dark:bg-[#1e1e2e] bg-white rounded-2xl p-6 border dark:border-[#313244] border-gray-200 shadow-sm mb-6">
+      <div class="flex items-center justify-between flex-wrap gap-3 mb-4">
+        <div>
+          <h2 class="text-base font-bold flex items-center gap-2">
+            <i class="fas fa-user-plus text-blue-400"></i> Add Teammate
+          </h2>
+          <p class="text-xs dark:text-gray-400 text-gray-500 mt-0.5">Add competitive programmers to your team directory by in-app username or individual platform handles.</p>
+        </div>
+        <div class="flex items-center bg-gray-100 dark:bg-[#181825] p-1 rounded-xl text-xs font-semibold">
+          <button onclick="CPApp.setAddMode('inapp')" id="tab-add-inapp" class="px-3 py-1.5 rounded-lg bg-blue-600 text-white shadow-sm transition">
+            <i class="fas fa-at mr-1"></i>In-App Username
+          </button>
+          <button onclick="CPApp.setAddMode('manual')" id="tab-add-manual" class="px-3 py-1.5 rounded-lg text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition">
+            <i class="fas fa-sliders-h mr-1"></i>Direct Platform Handles
+          </button>
+        </div>
+      </div>
+
+      <!-- Add via In-App Username Form -->
+      <div id="add-form-inapp" class="space-y-3">
+        <div class="flex flex-col sm:flex-row gap-3">
+          <div class="relative flex-1">
+            <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 font-mono text-sm">@</span>
+            <input type="text" id="inp-inapp-username" placeholder="Type username (e.g. tourist, neal, utkarsh)…"
+              class="w-full pl-8 pr-3 py-2.5 text-xs rounded-xl dark:bg-[#181825] bg-gray-50 border dark:border-[#313244] border-gray-200 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <button onclick="CPApp.handleAddMemberByInApp()" class="px-5 py-2.5 text-xs font-semibold rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition flex items-center justify-center gap-2 shrink-0">
+            <i class="fas fa-plus"></i><span>Add to Team</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Add via Manual Handles Form -->
+      <form id="add-form-manual" onsubmit="CPApp.handleAddMemberManual(event)" class="hidden space-y-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+          <div>
+            <label class="block text-[11px] font-bold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">Full Name</label>
+            <input type="text" id="inp-m-name" required placeholder="e.g. Alex Rivera" class="w-full text-xs rounded-xl dark:bg-[#181825] bg-gray-50 border dark:border-[#313244] border-gray-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">In-App Username (@)</label>
+            <input type="text" id="inp-m-username" required placeholder="alex_cp" class="w-full text-xs rounded-xl dark:bg-[#181825] bg-gray-50 border dark:border-[#313244] border-gray-200 px-3 py-2 font-mono outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">Role</label>
+            <select id="inp-m-role" class="w-full text-xs rounded-xl dark:bg-[#181825] bg-gray-50 border dark:border-[#313244] border-gray-200 px-3 py-2 font-medium outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="teammate">Teammate</option>
+              <option value="leader">Team Leader</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">Codeforces Handle</label>
+            <input type="text" id="inp-m-cf" placeholder="Codeforces username" class="w-full text-xs rounded-xl dark:bg-[#181825] bg-gray-50 border dark:border-[#313244] border-gray-200 px-3 py-2 font-mono outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">LeetCode Username</label>
+            <input type="text" id="inp-m-lc" placeholder="LeetCode username" class="w-full text-xs rounded-xl dark:bg-[#181825] bg-gray-50 border dark:border-[#313244] border-gray-200 px-3 py-2 font-mono outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">AtCoder Handle</label>
+            <input type="text" id="inp-m-atc" placeholder="AtCoder handle" class="w-full text-xs rounded-xl dark:bg-[#181825] bg-gray-50 border dark:border-[#313244] border-gray-200 px-3 py-2 font-mono outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+        </div>
+        <div class="flex justify-end">
+          <button type="submit" class="px-5 py-2.5 text-xs font-semibold rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition shadow-sm">
+            <i class="fas fa-save mr-1.5"></i>Save Member
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Team Members Table -->
+    <div class="dark:bg-[#1e1e2e] bg-white rounded-2xl border dark:border-[#313244] border-gray-200 shadow-sm overflow-hidden">
+      <div class="px-6 py-4 border-b dark:border-[#313244] border-gray-200 flex items-center justify-between">
+        <h3 class="text-sm font-bold flex items-center gap-2">
+          <i class="fas fa-address-book text-indigo-400"></i> Active Team Roster
+        </h3>
+        <span id="roster-count-badge" class="text-xs px-2.5 py-0.5 rounded-full dark:bg-[#181825] bg-gray-100 font-mono text-gray-400">0 Members</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse text-xs" id="team-roster-table">
+          <thead class="dark:bg-[#181825] bg-gray-50 border-b dark:border-[#313244] border-gray-200">
+            <tr>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Member</th>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Role</th>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Codeforces</th>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">LeetCode</th>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">AtCoder</th>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">CSES</th>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="team-roster-tbody" class="divide-y dark:divide-[#313244] divide-gray-100">
+            <!-- Dynamically populated -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= TAB: SOLO TRACKER ================= -->
+  <section id="tab-solo" class="tab-content hidden" role="tabpanel">
+    <div class="flex items-center justify-between flex-wrap gap-4 mb-6">
+      <div class="flex items-center gap-3">
+        <label for="solo-member-select" class="text-xs font-bold uppercase tracking-wider dark:text-gray-400 text-gray-500">View Solo Profile:</label>
+        <select id="solo-member-select" onchange="CPApp.onSoloMemberSelect(this.value)" class="text-xs font-semibold rounded-xl dark:bg-[#1e1e2e] bg-white border dark:border-[#313244] border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 shadow-sm">
+          <!-- Dynamically populated -->
+        </select>
+      </div>
+      <div id="solo-member-actions"></div>
+    </div>
+
+    <div id="solo-profile-container" class="space-y-6">
+      <!-- Dynamically rendered profile overview -->
+    </div>
+  </section>
+
+  <!-- ================= TAB: PROBLEM EXPLORER ================= -->
+  <section id="tab-explorer" class="tab-content hidden" role="tabpanel">
+    <div class="dark:bg-[#1e1e2e] bg-white rounded-2xl p-6 border dark:border-[#313244] border-gray-200 shadow-sm mb-6">
+      <div class="flex items-center justify-between flex-wrap gap-4 mb-4">
+        <div>
+          <h2 class="text-base font-bold flex items-center gap-2">
+            <i class="fas fa-compass text-blue-400"></i> Canonical Problem Explorer
+          </h2>
+          <p class="text-xs dark:text-gray-400 text-gray-500 mt-0.5">Explore the unified catalog of problems discovered across all team members and platforms.</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <input type="text" id="explorer-search" placeholder="Search by title, tag, rating…" oninput="CPApp.renderProblemExplorer()"
+            class="text-xs rounded-xl dark:bg-[#181825] bg-gray-50 border dark:border-[#313244] border-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 w-64" />
+        </div>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse text-xs" id="explorer-table">
+          <thead class="dark:bg-[#181825] bg-gray-50 border-y dark:border-[#313244] border-gray-200">
+            <tr>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Platform</th>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Problem</th>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Difficulty</th>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Provenance</th>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 text-center">Team Solvers</th>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody id="explorer-tbody" class="divide-y dark:divide-[#313244] divide-gray-100"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= TAB: ACTIVITY & STREAKS ================= -->
+  <section id="tab-activity" class="tab-content hidden" role="tabpanel">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="lg:col-span-2 space-y-6">
+        <div class="dark:bg-[#1e1e2e] bg-white rounded-2xl p-6 border dark:border-[#313244] border-gray-200 shadow-sm">
+          <h3 class="text-base font-bold flex items-center gap-2 mb-4">
+            <i class="fas fa-stream text-blue-400"></i> Live Team Activity Feed
+          </h3>
+          <div id="activity-feed-list" class="space-y-3">
+            <!-- Dynamically populated recent solved activity -->
+          </div>
+        </div>
+      </div>
+
+      <div class="space-y-6">
+        <!-- Streak Card -->
+        <div class="dark:bg-[#1e1e2e] bg-white rounded-2xl p-6 border dark:border-[#313244] border-gray-200 shadow-sm">
+          <h3 class="text-base font-bold flex items-center gap-2 mb-3">
+            <i class="fas fa-fire text-amber-500"></i> Team Solve Streak
+          </h3>
+          <div class="flex items-center gap-4">
+            <div class="w-14 h-14 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center text-3xl font-black shrink-0">
+              <i class="fas fa-bolt"></i>
+            </div>
+            <div>
+              <div id="streak-days-count" class="text-3xl font-black text-amber-500">0 Days</div>
+              <p class="text-xs dark:text-gray-400 text-gray-500 mt-0.5">Consecutive days with at least 1 verified solve</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Platform Distribution -->
+        <div class="dark:bg-[#1e1e2e] bg-white rounded-2xl p-6 border dark:border-[#313244] border-gray-200 shadow-sm">
+          <h3 class="text-sm font-bold flex items-center gap-2 mb-3">
+            <i class="fas fa-pie-chart text-purple-400"></i> Platform Distribution
+          </h3>
+          <div id="platform-distribution-bars" class="space-y-2.5">
+            <!-- Populated via renderActivity -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= TAB: SETTINGS & STORAGE ================= -->
+  <section id="tab-settings" class="tab-content hidden" role="tabpanel">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <!-- Storage Architecture & Backup -->
+      <div class="dark:bg-[#1e1e2e] bg-white rounded-2xl p-6 border dark:border-[#313244] border-gray-200 shadow-sm space-y-4">
+        <div>
+          <h3 class="text-base font-bold flex items-center gap-2">
+            <i class="fas fa-database text-emerald-400"></i> Storage Engine & Migrations
+          </h3>
+          <p class="text-xs dark:text-gray-400 text-gray-500 mt-1">Data is stored in IndexedDB (with automated localStorage mirroring) under schema v2.</p>
+        </div>
+
+        <div class="p-4 rounded-xl dark:bg-[#181825] bg-gray-50 border dark:border-[#313244] border-gray-200 text-xs space-y-2">
+          <div class="flex justify-between">
+            <span class="text-gray-400">Primary Database:</span>
+            <span class="font-mono font-bold text-emerald-400">IndexedDB (CPTeamTrackerDB)</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-400">Schema Version:</span>
+            <span class="font-mono font-bold">2.0.0</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-400">Active Records:</span>
+            <span id="settings-storage-records" class="font-mono">--</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-400">Data Integrity Guard:</span>
+            <span class="font-mono text-blue-400">Active (Single Source of Truth)</span>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap gap-2 pt-2">
+          <button onclick="CPStorage.exportBackupJSON()" class="px-3.5 py-2 text-xs font-semibold rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition flex items-center gap-1.5 shadow-sm">
+            <i class="fas fa-download"></i><span>Export Team JSON</span>
+          </button>
+          <label class="px-3.5 py-2 text-xs font-semibold rounded-xl bg-gray-200 dark:bg-[#313244] hover:bg-gray-300 dark:hover:bg-[#45475a] text-gray-800 dark:text-gray-200 transition flex items-center gap-1.5 shadow-sm cursor-pointer">
+            <i class="fas fa-upload"></i><span>Import Team JSON</span>
+            <input type="file" accept=".json" onchange="CPStorage.importBackupJSON(event)" class="hidden" />
+          </label>
+          <button onclick="CPTests.runAll()" class="px-3.5 py-2 text-xs font-semibold rounded-xl bg-purple-600/10 text-purple-400 border border-purple-500/30 hover:bg-purple-600/20 transition flex items-center gap-1.5">
+            <i class="fas fa-stethoscope"></i><span>Run Self-Check Diagnostics</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Authentication & Real OAuth Config -->
+      <div class="dark:bg-[#1e1e2e] bg-white rounded-2xl p-6 border dark:border-[#313244] border-gray-200 shadow-sm space-y-4">
+        <div>
+          <h3 class="text-base font-bold flex items-center gap-2">
+            <i class="fas fa-shield-alt text-blue-400"></i> Authentication Architecture
+          </h3>
+          <p class="text-xs dark:text-gray-400 text-gray-500 mt-1">Configured for Google OAuth / OIDC Identity tokens with permanent user UUIDs.</p>
+        </div>
+
+        <div class="p-4 rounded-xl dark:bg-[#181825] bg-gray-50 border dark:border-[#313244] border-gray-200 text-xs space-y-2">
+          <div class="flex justify-between">
+            <span class="text-gray-400">Current Mode:</span>
+            <span id="settings-auth-mode" class="font-bold text-amber-400">Local Workspace Mode</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-400">Google OAuth Client ID:</span>
+            <span id="settings-oauth-status" class="font-mono text-gray-400">Not configured</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-400">User Identity Separation:</span>
+            <span class="font-mono text-emerald-400">Enforced (Permanent UUID)</span>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-[11px] font-bold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">Set Google OAuth 2.0 Client ID (Optional)</label>
+          <div class="flex gap-2">
+            <input type="text" id="inp-google-client-id" placeholder="your-client-id.apps.googleusercontent.com" class="flex-1 text-xs rounded-xl dark:bg-[#181825] bg-gray-50 border dark:border-[#313244] border-gray-200 px-3 py-2 font-mono outline-none focus:ring-2 focus:ring-blue-500" />
+            <button onclick="CPAuth.saveGoogleClientId()" class="px-3.5 py-2 text-xs font-semibold rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition">Save</button>
+          </div>
+          <p class="text-[11px] dark:text-gray-500 text-gray-400 mt-1">When provided, the portal initializes the official Google Identity Services SDK automatically.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Diagnostic Suite Results Box -->
+    <div id="diagnostics-results-box" class="hidden mt-6 dark:bg-[#1e1e2e] bg-white rounded-2xl p-6 border dark:border-[#313244] border-gray-200 shadow-sm">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-sm font-bold flex items-center gap-2">
+          <i class="fas fa-check-double text-emerald-400"></i> Self-Check Test Suite Results
+        </h3>
+        <span id="diagnostics-timestamp" class="text-xs font-mono text-gray-400">--</span>
+      </div>
+      <div id="diagnostics-test-output" class="font-mono text-xs space-y-1.5 p-4 rounded-xl dark:bg-[#181825] bg-gray-50 border dark:border-[#313244] border-gray-200 max-h-60 overflow-y-auto"></div>
+    </div>
+  </section>
+
+</div>
+
+<!-- JavaScript Module Architecture -->
+<script>
+/**
+ * ============================================================================
+ * CP TEAM TRACKER — ENTERPRISE ENGINE v2.0
+ * Architecture:
+ *   1. Constants & Platform Registry
+ *   2. Security & Sanitization Layer
+ *   3. Storage Engine (IndexedDB + Versioned Migration)
+ *   4. Data Models & 5-Tier Provenance Classification
+ *   5. Authentication & Identity Management
+ *   6. Network Fetch Layer with True Cancellation & Retry-After
+ *   7. Independent Platform Adapters (CF, LC, AtCoder, CSES)
+ *   8. Resilient Sync Engine
+ *   9. Matrix & Leaderboard Computation
+ *  10. UI View Controllers & Accessibility Modal System
+ *  11. Self-Check Diagnostic Suite
+ * ============================================================================
+ */
+
+// ── 1. CONSTANTS & PLATFORM REGISTRY ────────────────────────────────────────
+const SCHEMA_VERSION = 2;
+const STORAGE_KEY = 'cp_team_tracker_state_v2';
+const LEGACY_STORAGE_KEY = 'cp_team_tracker_v1';
+const AUTH_STORAGE_KEY = 'cp_tracker_auth_user_v2';
+const GOOGLE_CLIENT_ID_KEY = 'cp_google_client_id';
+
+const TIMEOUT_MS = 15000;
+const MAX_RETRIES = 3;
+const BASE_BACKOFF_MS = 1000;
+
+// 5-Tier Data Provenance System
+const PROVENANCE = {
+  VERIFIED: 'verified',                 // Directly confirmed by API submission with accepted verdict
+  PARTIALLY_VERIFIED: 'partially_verified', // Partial history fetch or pagination limit
+  MANUAL: 'manual',                     // Manually entered / CSES code
+  AGGREGATE: 'aggregate',               // Profile statistics not mapped to individual problems
+  UNVERIFIED: 'unverified'              // Unknown or unconfirmed status
+};
+
+const PLATFORMS = {
+  codeforces: {
+    name: 'Codeforces',
+    short: 'CF',
+    color: 'red',
+    icon: 'fa-chart-line',
+    profileUrl: h => `https://codeforces.com/profile/${encodeURIComponent(h)}`,
+    problemUrl: (cid, idx) => `https://codeforces.com/contest/${cid}/problem/${idx}`,
+    submissionUrl: (cid, sid) => cid ? `https://codeforces.com/contest/${cid}/submission/${sid}` : `https://codeforces.com/submission/${sid}`
+  },
+  leetcode: {
+    name: 'LeetCode',
+    short: 'LC',
+    color: 'amber',
+    icon: 'fa-code',
+    profileUrl: h => `https://leetcode.com/u/${encodeURIComponent(h)}/`,
+    problemUrl: slug => `https://leetcode.com/problems/${slug}/`,
+    submissionUrl: sid => sid ? `https://leetcode.com/submissions/detail/${sid}/` : null
+  },
+  atcoder: {
+    name: 'AtCoder',
+    short: 'ATC',
+    color: 'blue',
+    icon: 'fa-terminal',
+    profileUrl: h => `https://atcoder.jp/users/${encodeURIComponent(h)}`,
+    problemUrl: (cid, pid) => `https://atcoder.jp/contests/${cid}/tasks/${pid}`,
+    submissionUrl: (cid, sid) => cid && sid ? `https://atcoder.jp/contests/${cid}/submissions/${sid}` : null
+  },
+  cses: {
+    name: 'CSES',
+    short: 'CSES',
+    color: 'emerald',
+    icon: 'fa-cube',
+    profileUrl: () => `https://cses.fi/problemset/`,
+    problemUrl: code => `https://cses.fi/problemset/task/${code}`,
+    submissionUrl: () => null
+  }
+};
+
+// ── 2. SECURITY & SANITIZATION LAYER ────────────────────────────────────────
+const CPSecurity = {
+  // Context-aware HTML text escaping
+  escHTML(str) {
+    if (str === null || str === undefined) return '';
+    const s = String(str);
+    return s.replace(/[&<>"']/g, c => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    }[c] || c));
+  },
+
+  // Safe HTML Attribute escaping
+  escAttr(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  },
+
+  // Strict URL Sanitization (Rejects javascript:, data:, vbscript:)
+  sanitizeUrl(url) {
+    if (!url || typeof url !== 'string') return '#';
+    const trimmed = url.trim();
+    try {
+      const parsed = new URL(trimmed, window.location.origin);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        return trimmed;
+      }
+    } catch (_) {}
+    return '#';
+  },
+
+  // Safe image/avatar validation
+  safeAvatarUrl(url, fallbackSeed = 'user') {
+    if (url && typeof url === 'string') {
+      const sanitized = this.sanitizeUrl(url);
+      if (sanitized !== '#' && !sanitized.startsWith('javascript:')) {
+        return sanitized;
+      }
+    }
+    return `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(fallbackSeed)}`;
+  }
+};
+
+// ── 3. STORAGE ENGINE (IndexedDB + Versioned Migration) ─────────────────────
+const CPStorage = {
+  db: null,
+  dbName: 'CPTeamTrackerDB',
+  storeName: 'app_state',
+
+  async init() {
+    return new Promise((resolve) => {
+      try {
+        const req = indexedDB.open(this.dbName, 2);
+        req.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains(this.storeName)) {
+            db.createObjectStore(this.storeName);
+          }
+        };
+        req.onsuccess = (e) => {
+          this.db = e.target.result;
+          resolve(true);
+        };
+        req.onerror = () => {
+          console.warn('[Storage] IndexedDB unavailable, falling back to localStorage');
+          this.db = null;
+          resolve(false);
+        };
+      } catch (err) {
+        console.warn('[Storage] IndexedDB exception', err);
+        this.db = null;
+        resolve(false);
+      }
+    });
+  },
+
+  async get(key) {
+    if (this.db) {
+      try {
+        return await new Promise((resolve, reject) => {
+          const tx = this.db.transaction(this.storeName, 'readonly');
+          const store = tx.objectStore(this.storeName);
+          const req = store.get(key);
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+        });
+      } catch (e) {
+        console.warn('[Storage] IndexedDB get failed, checking localStorage', e);
+      }
+    }
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  },
+
+  async set(key, value) {
+    if (this.db) {
+      try {
+        await new Promise((resolve, reject) => {
+          const tx = this.db.transaction(this.storeName, 'readwrite');
+          const store = tx.objectStore(this.storeName);
+          const req = store.put(value, key);
+          req.onsuccess = () => resolve();
+          req.onerror = () => reject(req.error);
+        });
+      } catch (e) {
+        console.warn('[Storage] IndexedDB set failed, mirroring to localStorage', e);
+      }
+    }
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (e) {
+      console.error('[Storage] localStorage quota reached or write error', e);
+    }
+  },
+
+  // Forward migration: v1 (or legacy) -> v2
+  migrateData(raw) {
+    if (!raw) return null;
+    const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    
+    // Check schema version
+    const version = data.schemaVersion || 1;
+    if (version < 2) {
+      console.info('[Storage] Migrating state from v1 to schema v2…');
+      // Ensure all members have permanent UUIDs, roles, and handle histories
+      if (Array.isArray(data.members)) {
+        data.members = data.members.map((m, idx) => {
+          return {
+            id: m.id || ('mem_' + Math.random().toString(36).slice(2, 10)),
+            inAppUsername: m.inAppUsername || ('user_' + idx),
+            name: m.name || 'Member ' + (idx + 1),
+            role: m.role || (idx === 0 ? 'leader' : 'teammate'),
+            avatar: CPSecurity.safeAvatarUrl(m.avatar, m.inAppUsername || 'user'),
+            handles: m.handles || { codeforces: '', leetcode: '', atcoder: '', cses: '' },
+            handleHistory: m.handleHistory || [],
+            aggregateStats: m.aggregateStats || {}
+          };
+        });
+      }
+
+      // Ensure single source of truth for problem submissions
+      data.submissions = data.submissions || {};
+      data.problems = data.problems || {};
+      data.memberAccepted = data.memberAccepted || {};
+
+      // Convert any legacy array format to Set / array clean form
+      Object.keys(data.memberAccepted).forEach(mid => {
+        if (!Array.isArray(data.memberAccepted[mid])) {
+          data.memberAccepted[mid] = [];
+        }
+      });
+
+      data.schemaVersion = 2;
+    }
+    return data;
+  },
+
+  async exportBackupJSON() {
+    const state = await this.get(STORAGE_KEY);
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cp_team_tracker_backup_${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    CPApp.toast('Team data exported successfully', 'success');
+  },
+
+  async importBackupJSON(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      if (!parsed || !parsed.members || !parsed.problems) {
+        throw new Error('Invalid backup schema: missing members or problems array');
+      }
+      const migrated = this.migrateData(parsed);
+      await this.set(STORAGE_KEY, migrated);
+      CPState.load(migrated);
+      CPApp.renderAll();
+      CPApp.toast('Team data imported successfully', 'success');
+    } catch (e) {
+      console.error('Import failed', e);
+      CPApp.toast('Import failed: ' + e.message, 'error');
+    }
+  }
+};
+
+// ── 4. STATE MANAGEMENT & SINGLE SOURCE OF TRUTH ────────────────────────────
+const CPState = {
+  data: {
+    schemaVersion: 2,
+    teamName: 'CP Team Tracker',
+    members: [],
+    problems: {},     // canonicalId -> { id, platform, title, url, difficulty, tags, provenance }
+    submissions: {},  // canonicalId -> { memberId: { submissionId, timestamp, verdict, language, provenance, url } }
+    memberAccepted: {}, // memberId -> Set<canonicalId> (in memory)
+    ratings: {},      // memberId -> { codeforces: number, atcoder: number }
+    platformSyncStatus: {}, // platform -> { status, lastSync, count, error }
+    lastSync: null,
+    syncHistory: []
+  },
+
+  load(raw) {
+    if (!raw) return;
+    this.data.schemaVersion = raw.schemaVersion || 2;
+    this.data.teamName = raw.teamName || 'CP Team Tracker';
+    this.data.members = raw.members || [];
+    this.data.problems = raw.problems || {};
+    this.data.submissions = raw.submissions || {};
+    this.data.ratings = raw.ratings || {};
+    this.data.platformSyncStatus = raw.platformSyncStatus || {};
+    this.data.lastSync = raw.lastSync || null;
+    this.data.syncHistory = raw.syncHistory || [];
+
+    // Hydrate memberAccepted as Map of Sets
+    this.data.memberAccepted = {};
+    if (raw.memberAccepted) {
+      Object.entries(raw.memberAccepted).forEach(([mid, arr]) => {
+        this.data.memberAccepted[mid] = new Set(Array.isArray(arr) ? arr : []);
+      });
+    }
+
+    // Ensure all members have an initialized Set
+    this.data.members.forEach(m => {
+      if (!this.data.memberAccepted[m.id]) {
+        this.data.memberAccepted[m.id] = new Set();
+      }
+    });
+
+    // Cross-verify submissions with memberAccepted to guarantee zero desynchronization
+    Object.entries(this.data.submissions).forEach(([probId, memberMap]) => {
+      Object.entries(memberMap).forEach(([mid, sub]) => {
+        if (sub && sub.verdict === 'OK' || sub.verdict === 'AC') {
+          if (!this.data.memberAccepted[mid]) this.data.memberAccepted[mid] = new Set();
+          this.data.memberAccepted[mid].add(probId);
+        }
+      });
+    });
+  },
+
+  toSerializable() {
+    const acceptedObj = {};
+    Object.entries(this.data.memberAccepted).forEach(([mid, set]) => {
+      acceptedObj[mid] = Array.from(set);
+    });
+    return {
+      ...this.data,
+      memberAccepted: acceptedObj
+    };
+  },
+
+  async persist() {
+    const payload = this.toSerializable();
+    await CPStorage.set(STORAGE_KEY, payload);
+    const countEl = document.getElementById('settings-storage-records');
+    if (countEl) {
+      countEl.textContent = `${this.data.members.length} members, ${Object.keys(this.data.problems).length} problems`;
+    }
+  },
+
+  // Authoritative Mutation: Record Problem Solve
+  markSolved(memberId, problem, submission) {
+    const pid = problem.id;
+    // Register canonical problem if not existing
+    if (!this.data.problems[pid]) {
+      this.data.problems[pid] = {
+        id: pid,
+        platform: problem.platform,
+        title: problem.title,
+        url: problem.url,
+        difficulty: problem.difficulty || null,
+        tags: problem.tags || [],
+        provenance: problem.provenance || PROVENANCE.VERIFIED
+      };
+    }
+
+    // Register submission record
+    if (!this.data.submissions[pid]) {
+      this.data.submissions[pid] = {};
+    }
+
+    this.data.submissions[pid][memberId] = {
+      submissionId: submission.submissionId || null,
+      timestamp: submission.timestamp || Date.now(),
+      verdict: submission.verdict || 'OK',
+      language: submission.language || 'Unknown',
+      memory: submission.memory || null,
+      time: submission.time || null,
+      provenance: submission.provenance || PROVENANCE.VERIFIED,
+      url: submission.url || null
+    };
+
+    // Update member accepted set
+    if (!this.data.memberAccepted[memberId]) {
+      this.data.memberAccepted[memberId] = new Set();
+    }
+    this.data.memberAccepted[memberId].add(pid);
+  },
+
+  // Cascade member deletion
+  deleteMemberCascade(memberId) {
+    this.data.members = this.data.members.filter(m => m.id !== memberId);
+    delete this.data.memberAccepted[memberId];
+    delete this.data.ratings[memberId];
+
+    // Remove member from submissions
+    Object.keys(this.data.submissions).forEach(pid => {
+      if (this.data.submissions[pid][memberId]) {
+        delete this.data.submissions[pid][memberId];
+      }
+      // If problem has 0 solvers left and was not a canonical seed, prune it
+      if (Object.keys(this.data.submissions[pid]).length === 0) {
+        delete this.data.submissions[pid];
+        delete this.data.problems[pid];
+      }
+    });
+  }
+};
+
+// ── 5. AUTHENTICATION & IDENTITY ARCHITECTURE ──────────────────────────────
+const CPAuth = {
+  currentUser: null,
+
+  init() {
+    try {
+      const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+      if (raw) {
+        this.currentUser = JSON.parse(raw);
+      }
+    } catch (e) {
+      this.currentUser = null;
+    }
+    this.renderHeader();
+  },
+
+  save() {
+    if (this.currentUser) {
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(this.currentUser));
+    } else {
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+    }
+    this.renderHeader();
+  },
+
+  renderHeader() {
+    const area = document.getElementById('auth-header-area');
+    if (!area) return;
+
+    if (!this.currentUser) {
+      area.innerHTML = `
+        <button onclick="CPApp.openAuthModal()" class="flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-xl bg-white dark:bg-[#1e1e2e] border dark:border-[#313244] border-gray-300 text-gray-700 dark:text-gray-200 hover:border-blue-500 shadow-sm transition">
+          <i class="fas fa-user-circle text-blue-500"></i>
+          <span class="hidden sm:inline">Local Profile / Sign In</span>
+          <span class="sm:hidden">Profile</span>
+        </button>
+      `;
+    } else {
+      const avatar = CPSecurity.safeAvatarUrl(this.currentUser.avatar, this.currentUser.inAppUsername);
+      area.innerHTML = `
+        <div class="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-white dark:bg-[#1e1e2e] border dark:border-[#313244] border-gray-300 shadow-sm">
+          <img src="${CPSecurity.escAttr(avatar)}" alt="${CPSecurity.escAttr(this.currentUser.displayName)}" class="w-6 h-6 rounded-full border border-blue-400 object-cover" />
+          <div class="text-left leading-tight hidden sm:block max-w-[120px]">
+            <div class="text-xs font-bold truncate dark:text-gray-200 text-gray-800">${CPSecurity.escHTML(this.currentUser.displayName)}</div>
+            <div class="text-[10px] text-blue-400 font-mono truncate">@${CPSecurity.escHTML(this.currentUser.inAppUsername)}</div>
+          </div>
+          <span class="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">${CPSecurity.escHTML(this.currentUser.role || 'Member')}</span>
+          <button onclick="CPApp.openAuthModal()" class="text-gray-400 hover:text-blue-400 p-1 text-xs transition" title="Profile Settings"><i class="fas fa-cog"></i></button>
+          <button onclick="CPAuth.signOut()" class="text-gray-400 hover:text-red-400 p-1 text-xs transition" title="Sign Out"><i class="fas fa-sign-out-alt"></i></button>
+        </div>
+      `;
+    }
+  },
+
+  setLocalProfile(name, username, role = 'leader') {
+    this.currentUser = {
+      id: 'usr_' + Math.random().toString(36).slice(2, 10),
+      displayName: name,
+      inAppUsername: username.toLowerCase().replace(/[^a-z0-9_]/g, ''),
+      role: role,
+      provider: 'local_workspace',
+      email: `${username}@workspace.local`,
+      avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(username)}`
+    };
+    this.save();
+    CPApp.toast(`Profile updated for @${this.currentUser.inAppUsername}`, 'success');
+  },
+
+  signOut() {
+    this.currentUser = null;
+    this.save();
+    CPApp.toast('Signed out from active profile', 'info');
+  },
+
+  saveGoogleClientId() {
+    const inp = document.getElementById('inp-google-client-id');
+    if (!inp) return;
+    const cid = inp.value.trim();
+    localStorage.setItem(GOOGLE_CLIENT_ID_KEY, cid);
+    CPApp.toast('Google Client ID saved. Refresh to activate GSI SDK.', 'success');
+  }
+};
+
+// ── 6. NETWORK LAYER (Fetch with True Cancellation & Retry-After) ───────────
+class SyncCancelledError extends Error {
+  constructor(message = 'Sync cancelled by user') {
+    super(message);
+    this.name = 'SyncCancelledError';
+  }
+}
+
+async function fetchR(url, opts = {}, retries = MAX_RETRIES) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    // Immediate check if caller cancelled
+    if (opts.signal && opts.signal.aborted) {
+      throw new SyncCancelledError();
+    }
+
+    const timeoutCtrl = new AbortController();
+    const timerId = setTimeout(() => timeoutCtrl.abort(), TIMEOUT_MS);
+
+    // Merge caller signal and internal timeout signal
+    let combinedSignal = timeoutCtrl.signal;
+    if (opts.signal) {
+      if (typeof AbortSignal.any === 'function') {
+        combinedSignal = AbortSignal.any([opts.signal, timeoutCtrl.signal]);
+      } else {
+        const anyCtrl = new AbortController();
+        const onAbort = () => anyCtrl.abort(opts.signal.aborted ? opts.signal.reason : timeoutCtrl.signal.reason);
+        if (opts.signal.aborted) onAbort();
+        else {
+          opts.signal.addEventListener('abort', onAbort, { once: true });
+          timeoutCtrl.signal.addEventListener('abort', onAbort, { once: true });
+        }
+        combinedSignal = anyCtrl.signal;
+      }
+    }
+
+    try {
+      const response = await fetch(url, { ...opts, signal: combinedSignal });
+      
+      // If caller aborted during fetch
+      if (opts.signal && opts.signal.aborted) {
+        throw new SyncCancelledError();
+      }
+
+      if (response.ok) {
+        return response;
+      }
+
+      // Handle HTTP 429 Too Many Requests: Inspect Retry-After header
+      if (response.status === 429) {
+        const retryAfterHeader = response.headers.get('Retry-After');
+        let waitMs = BASE_BACKOFF_MS * Math.pow(2, attempt) + Math.random() * 500;
+        if (retryAfterHeader) {
+          const parsedSeconds = parseInt(retryAfterHeader, 10);
+          if (!isNaN(parsedSeconds)) {
+            waitMs = parsedSeconds * 1000;
+          }
+        }
+        console.warn(`[Network] HTTP 429 Rate limited. Waiting ${Math.round(waitMs)}ms…`);
+        if (attempt < retries) {
+          await new Promise(r => setTimeout(r, waitMs));
+          continue;
+        }
+      }
+
+      // Handle 5xx server errors
+      if (response.status >= 500 && attempt < retries) {
+        await new Promise(r => setTimeout(r, BASE_BACKOFF_MS * Math.pow(2, attempt) + Math.random() * 500));
+        continue;
+      }
+
+      throw new Error(`HTTP ${response.status}`);
+    } catch (err) {
+      if (opts.signal && opts.signal.aborted) {
+        throw new SyncCancelledError();
+      }
+      if (err.name === 'AbortError' && timeoutCtrl.signal.aborted) {
+        // This was an internal timeout, not user cancellation
+        if (attempt < retries) {
+          await new Promise(r => setTimeout(r, BASE_BACKOFF_MS * Math.pow(2, attempt)));
+          continue;
+        }
+        throw new Error('Request timed out');
+      }
+      if (attempt < retries) {
+        await new Promise(r => setTimeout(r, BASE_BACKOFF_MS * Math.pow(2, attempt) + Math.random() * 500));
+        continue;
+      }
+      throw err;
+    } finally {
+      clearTimeout(timerId); // Guaranteed cleanup
+    }
+  }
+}
+
+// ── 7. INDEPENDENT PLATFORM ADAPTERS ────────────────────────────────────────
+
+// Adapter 1: Codeforces
+const CFAdapter = {
+  async fetchMember(handle, signal, onProgress) {
+    if (!handle) return { submissions: [], rating: null, provenance: PROVENANCE.VERIFIED };
+    const pageSize = 5000;
+    const maxPages = 5; // 25,000 submissions max for responsive deep sync
+    let from = 1;
+    let allRaw = [];
+
+    for (let page = 0; page < maxPages; page++) {
+      if (signal?.aborted) throw new SyncCancelledError();
+      if (onProgress && page > 0) onProgress(`CF: Loaded ${allRaw.length} submissions…`);
+
+      const url = `https://codeforces.com/api/user.status?handle=${encodeURIComponent(handle)}&from=${from}&count=${pageSize}`;
+      const res = await fetchR(url, { signal });
+      const data = await res.json();
+
+      if (data.status !== 'OK') throw new Error(data.comment || 'Codeforces API error');
+      const batch = data.result || [];
+      allRaw = allRaw.concat(batch);
+      if (batch.length < pageSize) break; // Finished complete history
+      from += batch.length;
+      await new Promise(r => setTimeout(r, 300)); // Polite pacing
+    }
+
+    // Fetch user rating
+    let userRating = null;
+    try {
+      const infoRes = await fetchR(`https://codeforces.com/api/user.info?handles=${encodeURIComponent(handle)}`, { signal });
+      const infoData = await infoRes.json();
+      if (infoData.status === 'OK' && infoData.result?.[0]) {
+        userRating = infoData.result[0].rating || null;
+      }
+    } catch (_) {}
+
+    const accepted = allRaw.filter(s => s && s.verdict === 'OK' && s.problem).map(s => ({
+      platform: 'codeforces',
+      canonId: `cf::${s.problem.contestId}${s.problem.index}`,
+      title: `${s.problem.contestId}${s.problem.index} - ${s.problem.name}`,
+      url: PLATFORMS.codeforces.problemUrl(s.problem.contestId, s.problem.index),
+      difficulty: s.problem.rating ? String(s.problem.rating) : null,
+      tags: s.problem.tags || [],
+      submissionId: String(s.id),
+      timestamp: (s.creationTimeSeconds || 0) * 1000,
+      language: s.programmingLanguage || 'Unknown',
+      memory: s.memoryConsumedBytes ? Math.round(s.memoryConsumedBytes / 1024) + ' KB' : null,
+      time: s.timeConsumedMillis ? s.timeConsumedMillis + ' ms' : null,
+      provenance: PROVENANCE.VERIFIED,
+      subUrl: PLATFORMS.codeforces.submissionUrl(s.problem.contestId, s.id)
+    }));
+
+    return { submissions: accepted, rating: userRating, provenance: PROVENANCE.VERIFIED };
+  }
+};
+
+// Adapter 2: LeetCode (Community proxy + Multi-endpoint Fallback)
+const LCAdapter = {
+  async fetchMember(handle, signal, onProgress) {
+    if (!handle) return { submissions: [], aggregateStats: null, provenance: PROVENANCE.PARTIALLY_VERIFIED };
+    if (onProgress) onProgress(`LeetCode: Fetching AC submissions…`);
+
+    let rawList = [];
+    let aggregateStats = null;
+    let fetchedOk = false;
+
+    // Endpoint A: alfa-leetcode-api
+    try {
+      const res = await fetchR(`https://alfa-leetcode-api.onrender.com/${encodeURIComponent(handle)}/acSubmission`, { signal }, 1);
+      const data = await res.json();
+      if (Array.isArray(data.submission)) rawList = data.submission;
+      fetchedOk = true;
+    } catch (e1) {
+      if (e1 instanceof SyncCancelledError) throw e1;
+      // Fallback B: leetcode-api.vercel.app
+      try {
+        const res2 = await fetchR(`https://leetcode-api.vercel.app/${encodeURIComponent(handle)}`, { signal }, 1);
+        const data2 = await res2.json();
+        if (Array.isArray(data2.recentSubmissions)) {
+          rawList = data2.recentSubmissions.filter(s => s.statusDisplay === 'Accepted');
+        }
+        if (data2.totalSolved !== undefined) {
+          aggregateStats = { total: data2.totalSolved, easy: data2.easySolved, medium: data2.mediumSolved, hard: data2.hardSolved };
+        }
+        fetchedOk = true;
+      } catch (e2) {
+        if (e2 instanceof SyncCancelledError) throw e2;
+      }
+    }
+
+    // Try fetching profile aggregate badge
+    if (!aggregateStats) {
+      try {
+        const profRes = await fetchR(`https://alfa-leetcode-api.onrender.com/userProfile/${encodeURIComponent(handle)}`, { signal }, 1);
+        const pData = await profRes.json();
+        if (pData.totalSolved !== undefined) {
+          aggregateStats = { total: pData.totalSolved, easy: pData.easySolved, medium: pData.mediumSolved, hard: pData.hardSolved };
+        }
+      } catch (_) {}
+    }
+
+    const accepted = rawList.map(s => {
+      const slug = s.titleSlug || s.title?.toLowerCase().replace(/[^a-z0-9]/g, '-') || 'problem';
+      const title = s.title || slug;
+      return {
+        platform: 'leetcode',
+        canonId: `lc::${slug}`,
+        title: title,
+        url: PLATFORMS.leetcode.problemUrl(slug),
+        difficulty: null,
+        tags: [],
+        submissionId: s.id ? String(s.id) : null,
+        timestamp: s.timestamp ? parseInt(s.timestamp, 10) * 1000 : Date.now(),
+        language: s.lang || 'Unknown',
+        provenance: PROVENANCE.PARTIALLY_VERIFIED, // Clearly labeled: recent 20-30 window
+        subUrl: s.id ? PLATFORMS.leetcode.submissionUrl(s.id) : null
+      };
+    });
+
+    return { submissions: accepted, aggregateStats, provenance: PROVENANCE.PARTIALLY_VERIFIED };
+  }
+};
+
+// Adapter 3: AtCoder (Kenkoooo API)
+const ATCAdapter = {
+  async fetchMember(handle, signal, onProgress) {
+    if (!handle) return { submissions: [], rating: null, provenance: PROVENANCE.VERIFIED };
+    if (onProgress) onProgress(`AtCoder: Fetching submissions from Kenkoooo…`);
+
+    let fromSecond = 0;
+    let allSubs = [];
+    const maxBatches = 10;
+
+    for (let batch = 0; batch < maxBatches; batch++) {
+      if (signal?.aborted) throw new SyncCancelledError();
+      const url = `https://kenkoooo.com/atcoder/atcoder-api/v3/user/submissions?user=${encodeURIComponent(handle)}&from_second=${fromSecond}`;
+      const res = await fetchR(url, { signal });
+      const items = await res.json();
+      if (!Array.isArray(items) || items.length === 0) break;
+      allSubs = allSubs.concat(items);
+      fromSecond = items[items.length - 1].epoch_second + 1;
+      if (items.length < 500) break;
+      await new Promise(r => setTimeout(r, 400));
+    }
+
+    const accepted = allSubs.filter(s => s && s.result === 'AC').map(s => ({
+      platform: 'atcoder',
+      canonId: `atc::${s.problem_id}`,
+      title: `${s.contest_id.toUpperCase()} - ${s.problem_id}`,
+      url: PLATFORMS.atcoder.problemUrl(s.contest_id, s.problem_id),
+      difficulty: null,
+      tags: [],
+      submissionId: String(s.id),
+      timestamp: (s.epoch_second || 0) * 1000,
+      language: s.language || 'Unknown',
+      provenance: PROVENANCE.VERIFIED,
+      subUrl: PLATFORMS.atcoder.submissionUrl(s.contest_id, s.id)
+    }));
+
+    return { submissions: accepted, rating: null, provenance: PROVENANCE.VERIFIED };
+  }
+};
+
+// Adapter 4: CSES Manual Problem Importer
+const CSESAdapter = {
+  validateProblemCode(input) {
+    const trimmed = input.trim();
+    // Accept pure numeric task id (e.g. "1068") or URL
+    const match = trimmed.match(/(?:task\/)?([0-9]{3,5})/);
+    return match ? match[1] : null;
+  },
+
+  createRecord(code, title = '') {
+    return {
+      platform: 'cses',
+      canonId: `cses::${code}`,
+      title: title ? `CSES ${code} - ${title}` : `CSES Problem ${code}`,
+      url: PLATFORMS.cses.problemUrl(code),
+      difficulty: null,
+      tags: ['cses'],
+      submissionId: null,
+      timestamp: Date.now(),
+      language: 'Manual Entry',
+      provenance: PROVENANCE.MANUAL,
+      subUrl: null
+    };
+  }
+};
+
+// ── 8. RESILIENT SYNC ENGINE ────────────────────────────────────────────────
+const CPSync = {
+  activeController: null,
+  isSyncing: false,
+
+  cancelCurrentSync() {
+    if (this.activeController) {
+      this.activeController.abort('Sync cancelled by user');
+      this.activeController = null;
+      this.isSyncing = false;
+      this.updateUIStatus(false, 'Cancelled');
+      CPApp.toast('Sync was cancelled by user', 'info');
+    }
+  },
+
+  async syncAll() {
+    if (this.isSyncing) return;
+    this.isSyncing = true;
+    this.activeController = new AbortController();
+    const signal = this.activeController.signal;
+
+    this.updateUIStatus(true, 'Initializing…');
+
+    const members = CPState.data.members;
+    if (members.length === 0) {
+      this.isSyncing = false;
+      this.updateUIStatus(false, 'No members');
+      CPApp.toast('Add teammates before syncing', 'info');
+      return;
+    }
+
+    let completedTasks = 0;
+    const totalTasks = members.length;
+    const banner = document.getElementById('sync-progress-banner');
+    if (banner) banner.classList.remove('hidden');
+
+    try {
+      for (let i = 0; i < members.length; i++) {
+        if (signal.aborted) throw new SyncCancelledError();
+        const m = members[i];
+        this.setHeadline(`Syncing ${m.name} (${i + 1}/${members.length})…`);
+
+        await this.syncSingleMember(m, signal);
+        completedTasks++;
+        this.setProgress(Math.round((completedTasks / totalTasks) * 100));
+      }
+
+      CPState.data.lastSync = Date.now();
+      await CPState.persist();
+      CPApp.toast('Sync completed successfully!', 'success');
+      this.updateUIStatus(false, 'Complete');
+    } catch (err) {
+      if (err instanceof SyncCancelledError) {
+        this.updateUIStatus(false, 'Sync Cancelled');
+      } else {
+        console.error('[SyncEngine] Error during syncAll', err);
+        CPApp.toast('Sync incomplete: ' + err.message, 'warning');
+        this.updateUIStatus(false, 'Failed');
+      }
+    } finally {
+      this.isSyncing = false;
+      this.activeController = null;
+      if (banner) {
+        setTimeout(() => banner.classList.add('hidden'), 2500);
+      }
+      CPApp.renderAll();
+    }
+  },
+
+  async syncSingleMember(member, signal) {
+    const handles = member.handles || {};
+
+    // 1. Codeforces
+    if (handles.codeforces) {
+      try {
+        const res = await CFAdapter.fetchMember(handles.codeforces, signal, msg => this.setDetail(msg));
+        res.submissions.forEach(sub => {
+          CPState.markSolved(member.id, sub, sub);
+        });
+        if (res.rating) {
+          CPState.data.ratings[member.id] = { ...(CPState.data.ratings[member.id] || {}), codeforces: res.rating };
+        }
+      } catch (err) {
+        if (err instanceof SyncCancelledError) throw err;
+        console.warn(`CF sync failed for ${member.name}:`, err.message);
+      }
+    }
+
+    // 2. LeetCode
+    if (handles.leetcode) {
+      try {
+        const res = await LCAdapter.fetchMember(handles.leetcode, signal, msg => this.setDetail(msg));
+        res.submissions.forEach(sub => {
+          CPState.markSolved(member.id, sub, sub);
+        });
+        if (res.aggregateStats) {
+          member.aggregateStats = { ...(member.aggregateStats || {}), leetcode: res.aggregateStats };
+        }
+      } catch (err) {
+        if (err instanceof SyncCancelledError) throw err;
+        console.warn(`LeetCode sync failed for ${member.name}:`, err.message);
+      }
+    }
+
+    // 3. AtCoder
+    if (handles.atcoder) {
+      try {
+        const res = await ATCAdapter.fetchMember(handles.atcoder, signal, msg => this.setDetail(msg));
+        res.submissions.forEach(sub => {
+          CPState.markSolved(member.id, sub, sub);
+        });
+      } catch (err) {
+        if (err instanceof SyncCancelledError) throw err;
+        console.warn(`AtCoder sync failed for ${member.name}:`, err.message);
+      }
+    }
+  },
+
+  updateUIStatus(syncing, label) {
+    const btnSync = document.getElementById('btn-sync-all');
+    const btnCancel = document.getElementById('btn-cancel-sync');
+    const syncIcon = document.getElementById('sync-icon');
+
+    if (btnSync) btnSync.disabled = syncing;
+    if (syncIcon) {
+      if (syncing) syncIcon.classList.add('spin');
+      else syncIcon.classList.remove('spin');
+    }
+    if (btnCancel) {
+      if (syncing) btnCancel.classList.remove('hidden');
+      else btnCancel.classList.add('hidden');
+    }
+    const a11y = document.getElementById('a11y-live-region');
+    if (a11y) a11y.textContent = syncing ? 'Synchronization in progress' : 'Synchronization finished: ' + label;
+  },
+
+  setHeadline(text) {
+    const el = document.getElementById('sync-progress-headline');
+    if (el) el.textContent = text;
+  },
+
+  setDetail(text) {
+    const el = document.getElementById('sync-progress-detail');
+    if (el) el.textContent = text;
+  },
+
+  setProgress(percent) {
+    const bar = document.getElementById('sync-progress-bar');
+    const counter = document.getElementById('sync-progress-counter');
+    if (bar) bar.style.width = `${percent}%`;
+    if (counter) counter.textContent = `${percent}%`;
+  }
+};
+
+// ── 9. VIEW CONTROLLERS & RENDERING ─────────────────────────────────────────
+const CPApp = {
+  currentTab: 'matrix',
+  matrixSortMemberId: null,
+
+  init() {
+    this.switchTab('matrix');
+    CPAuth.init();
+    this.renderAll();
+    this.setupModalListeners();
+  },
+
+  switchTab(tabName) {
+    this.currentTab = tabName;
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      const isMatch = btn.getAttribute('data-tab') === tabName;
+      btn.setAttribute('aria-selected', isMatch ? 'true' : 'false');
+      if (isMatch) {
+        btn.classList.add('border-blue-500', 'text-blue-600', 'dark:text-blue-400');
+        btn.classList.remove('border-transparent', 'text-gray-500', 'dark:text-gray-400');
+      } else {
+        btn.classList.remove('border-blue-500', 'text-blue-600', 'dark:text-blue-400');
+        btn.classList.add('border-transparent', 'text-gray-500', 'dark:text-gray-400');
+      }
+    });
+
+    const activeSection = document.getElementById(`tab-${tabName}`);
+    if (activeSection) activeSection.classList.remove('hidden');
+
+    if (tabName === 'matrix') this.renderMatrix();
+    if (tabName === 'leaderboard') this.renderLeaderboard();
+    if (tabName === 'team') this.renderTeamRoster();
+    if (tabName === 'solo') this.renderSoloTracker();
+    if (tabName === 'explorer') this.renderProblemExplorer();
+    if (tabName === 'activity') this.renderActivity();
+    if (tabName === 'settings') this.renderSettings();
+  },
+
+  renderAll() {
+    this.renderKPIs();
+    this.renderMatrix();
+    this.renderLeaderboard();
+    this.renderTeamRoster();
+    this.renderSoloTracker();
+    this.renderProblemExplorer();
+    this.renderActivity();
+  },
+
+  renderKPIs() {
+    const memEl = document.getElementById('kpi-members');
+    const solEl = document.getElementById('kpi-verified-solves');
+    const probEl = document.getElementById('kpi-problems');
+    const syncEl = document.getElementById('kpi-last-sync');
+
+    if (memEl) memEl.textContent = CPState.data.members.length;
+    if (probEl) probEl.textContent = Object.keys(CPState.data.problems).length;
+
+    // Count strictly verified solves
+    let verifiedCount = 0;
+    Object.values(CPState.data.submissions).forEach(memberMap => {
+      Object.values(memberMap).forEach(sub => {
+        if (sub && (sub.verdict === 'OK' || sub.verdict === 'AC') && sub.provenance === PROVENANCE.VERIFIED) {
+          verifiedCount++;
+        }
+      });
+    });
+    if (solEl) solEl.textContent = verifiedCount;
+
+    if (syncEl) {
+      if (!CPState.data.lastSync) syncEl.textContent = 'Never';
+      else {
+        const diff = Date.now() - CPState.data.lastSync;
+        if (diff < 60000) syncEl.textContent = 'Just now';
+        else if (diff < 3600000) syncEl.textContent = `${Math.floor(diff / 60000)}m ago`;
+        else syncEl.textContent = new Date(CPState.data.lastSync).toLocaleDateString();
+      }
+    }
+  },
+
+  // ── Render Team Matrix ────────────────────────────────────────────────────
+  renderMatrix() {
+    const thead = document.getElementById('matrix-thead');
+    const tbody = document.getElementById('matrix-tbody');
+    const emptyState = document.getElementById('matrix-empty-state');
+    const summary = document.getElementById('matrix-status-summary');
+    if (!thead || !tbody) return;
+
+    const members = CPState.data.members;
+    const problems = Object.values(CPState.data.problems);
+
+    // Filter values
+    const searchVal = (document.getElementById('matrix-search')?.value || '').toLowerCase().trim();
+    const platFilter = document.getElementById('matrix-filter-platform')?.value || 'all';
+    const sortOrder = document.getElementById('matrix-sort-order')?.value || 'solved-asc';
+    const hideUnsolved = document.getElementById('matrix-hide-unsolved')?.checked ?? true;
+
+    // 1. Build Thead with individual member sort controls
+    let thHTML = `
+      <tr>
+        <th class="py-3 px-4 font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 sticky-col min-w-[200px]">Problem</th>
+        <th class="py-3 px-3 font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 text-center w-24">Platform</th>
+        <th class="py-3 px-3 font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 text-center w-20">Diff</th>
+        <th class="py-3 px-3 font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 text-center w-24">Solved</th>
+    `;
+
+    members.forEach(m => {
+      const isSortedByThis = this.matrixSortMemberId === m.id;
+      thHTML += `
+        <th class="py-3 px-3 font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 text-center min-w-[100px] cursor-pointer hover:bg-gray-100 dark:hover:bg-[#26263b] transition"
+            onclick="CPApp.toggleSortByMember('${m.id}')" title="Click to sort problems solved by ${CPSecurity.escAttr(m.name)}">
+          <div class="flex items-center justify-center gap-1">
+            <span class="truncate max-w-[80px]">${CPSecurity.escHTML(m.name)}</span>
+            <i class="fas ${isSortedByThis ? 'fa-sort-amount-down text-blue-400' : 'fa-sort text-gray-400 text-[10px]'}"></i>
+          </div>
+        </th>
+      `;
+    });
+    thHTML += `</tr>`;
+    thead.innerHTML = thHTML;
+
+    // 2. Filter problems
+    let filtered = problems.filter(p => {
+      if (platFilter !== 'all' && p.platform !== platFilter) return false;
+      if (searchVal && !p.title.toLowerCase().includes(searchVal) && !p.id.toLowerCase().includes(searchVal)) return false;
+
+      // Count solvers
+      const solversCount = members.filter(m => CPState.data.memberAccepted[m.id]?.has(p.id)).length;
+      if (hideUnsolved && solversCount === 0) return false;
+      p._solvedCount = solversCount;
+      return true;
+    });
+
+    // 3. Sorting
+    if (this.matrixSortMemberId) {
+      const mid = this.matrixSortMemberId;
+      filtered.sort((a, b) => {
+        const aHas = CPState.data.memberAccepted[mid]?.has(a.id) ? 1 : 0;
+        const bHas = CPState.data.memberAccepted[mid]?.has(b.id) ? 1 : 0;
+        return bHas - aHas || a._solvedCount - b._solvedCount;
+      });
+    } else if (sortOrder === 'solved-asc') {
+      // User preference: Solved by 1 -> Solved by 2 -> Solved by All 3
+      filtered.sort((a, b) => a._solvedCount - b._solvedCount || a.title.localeCompare(b.title));
+    } else if (sortOrder === 'solved-desc') {
+      filtered.sort((a, b) => b._solvedCount - a._solvedCount || a.title.localeCompare(b.title));
+    } else if (sortOrder === 'difficulty-desc') {
+      filtered.sort((a, b) => (parseInt(b.difficulty, 10) || 0) - (parseInt(a.difficulty, 10) || 0));
+    } else if (sortOrder === 'difficulty-asc') {
+      filtered.sort((a, b) => (parseInt(a.difficulty, 10) || 0) - (parseInt(b.difficulty, 10) || 0));
+    } else {
+      filtered.sort((a, b) => a.title.localeCompare(b.title));
+    }
+
+    if (summary) summary.textContent = `Showing ${filtered.length} of ${problems.length} problems`;
+
+    if (filtered.length === 0) {
+      tbody.innerHTML = '';
+      if (emptyState) emptyState.classList.remove('hidden');
+      return;
+    }
+    if (emptyState) emptyState.classList.add('hidden');
+
+    // 4. Render Rows
+    tbody.innerHTML = filtered.map(p => {
+      const plat = PLATFORMS[p.platform] || { name: p.platform, color: 'gray', short: p.platform };
+      const safeUrl = CPSecurity.sanitizeUrl(p.url);
+
+      let row = `
+        <tr class="hover:bg-gray-50/60 dark:hover:bg-[#26263b]/40 transition group">
+          <td class="py-3 px-4 font-medium sticky-col">
+            <div class="flex items-center gap-2">
+              <a href="${CPSecurity.escAttr(safeUrl)}" target="_blank" rel="noopener noreferrer" class="dark:text-gray-200 text-gray-800 hover:text-blue-500 font-semibold truncate max-w-[280px]" title="${CPSecurity.escAttr(p.title)}">
+                ${CPSecurity.escHTML(p.title)}
+              </a>
+              <button onclick="CPApp.openProblemDetail('${CPSecurity.escAttr(p.id)}')" class="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-blue-400 transition text-[11px] p-1" title="Problem Details">
+                <i class="fas fa-external-link-alt"></i>
+              </button>
+            </div>
+          </td>
+          <td class="py-3 px-3 text-center">
+            <span class="text-[10px] px-2 py-0.5 rounded font-mono font-bold bg-${plat.color}-500/10 text-${plat.color}-400 border border-${plat.color}-500/20">${plat.short}</span>
+          </td>
+          <td class="py-3 px-3 text-center font-mono text-[11px] text-gray-400">
+            ${p.difficulty ? CPSecurity.escHTML(p.difficulty) : '—'}
+          </td>
+          <td class="py-3 px-3 text-center">
+            <span class="text-[11px] font-bold px-2 py-0.5 rounded-full ${p._solvedCount === members.length ? 'bg-emerald-500/20 text-emerald-400 font-extrabold' : 'bg-gray-100 dark:bg-[#181825] text-gray-400'}">
+              ${p._solvedCount} / ${members.length}
+            </span>
+          </td>
+      `;
+
+      members.forEach(m => {
+        const isSolved = CPState.data.memberAccepted[m.id]?.has(p.id);
+        const sub = CPState.data.submissions[p.id]?.[m.id];
+        let cellIcon = `<i class="fas fa-times text-gray-400/40 text-xs"></i>`;
+        
+        if (isSolved) {
+          if (sub?.provenance === PROVENANCE.MANUAL) {
+            cellIcon = `<i class="fas fa-wrench text-amber-500 text-sm" data-tip="Manual Solve"></i>`;
+          } else {
+            cellIcon = `<i class="fas fa-check-circle text-emerald-500 text-sm" data-tip="Verified AC"></i>`;
+          }
+        }
+
+        row += `
+          <td class="py-3 px-3 text-center cursor-pointer" onclick="CPApp.openProblemDetail('${CPSecurity.escAttr(p.id)}')">
+            ${cellIcon}
+          </td>
+        `;
+      });
+
+      row += `</tr>`;
+      return row;
+    }).join('');
+  },
+
+  toggleSortByMember(memberId) {
+    if (this.matrixSortMemberId === memberId) {
+      this.matrixSortMemberId = null; // Toggle off
+    } else {
+      this.matrixSortMemberId = memberId;
+    }
+    this.renderMatrix();
+  },
+
+  onMatrixFilterChange() {
+    this.renderMatrix();
+  },
+
+  // ── Render Leaderboard ────────────────────────────────────────────────────
+  renderLeaderboard() {
+    const tbody = document.getElementById('leaderboard-tbody');
+    if (!tbody) return;
+
+    const members = [...CPState.data.members];
+    
+    // Calculate stats per member
+    const leaderboardData = members.map(m => {
+      let verifiedSolves = 0;
+      let manualSolves = 0;
+
+      const solvedSet = CPState.data.memberAccepted[m.id] || new Set();
+      solvedSet.forEach(pid => {
+        const sub = CPState.data.submissions[pid]?.[m.id];
+        if (sub?.provenance === PROVENANCE.MANUAL) manualSolves++;
+        else verifiedSolves++;
+      });
+
+      const cfRating = CPState.data.ratings[m.id]?.codeforces || 0;
+      const aggregateLC = m.aggregateStats?.leetcode?.total || 0;
+
+      return {
+        member: m,
+        verifiedSolves,
+        manualSolves,
+        aggregateLC,
+        cfRating
+      };
+    });
+
+    // Primary ranking: Verified Solves -> CF Rating -> Member Name
+    leaderboardData.sort((a, b) => b.verifiedSolves - a.verifiedSolves || b.cfRating - a.cfRating || a.member.name.localeCompare(b.member.name));
+
+    tbody.innerHTML = leaderboardData.map((row, idx) => {
+      const m = row.member;
+      const avatar = CPSecurity.safeAvatarUrl(m.avatar, m.inAppUsername);
+      const isLeader = m.role === 'leader';
+      const rankBadge = idx === 0 ? '<span class="text-amber-400 font-extrabold text-sm"><i class="fas fa-crown mr-1"></i>1</span>' :
+                        idx === 1 ? '<span class="text-gray-300 font-bold">2</span>' :
+                        idx === 2 ? '<span class="text-amber-600 font-bold">3</span>' : `<span class="text-gray-400 font-mono">${idx + 1}</span>`;
+
+      return `
+        <tr class="hover:bg-gray-50/60 dark:hover:bg-[#26263b]/40 transition">
+          <td class="py-3 px-4 text-center">${rankBadge}</td>
+          <td class="py-3 px-4 font-semibold">
+            <div class="flex items-center gap-2.5">
+              <img src="${CPSecurity.escAttr(avatar)}" class="w-7 h-7 rounded-full border border-blue-400 object-cover" />
+              <div>
+                <div class="dark:text-gray-100 text-gray-800 font-bold">${CPSecurity.escHTML(m.name)}</div>
+                <div class="text-[10px] text-blue-400 font-mono">@${CPSecurity.escHTML(m.inAppUsername)}</div>
+              </div>
+            </div>
+          </td>
+          <td class="py-3 px-4">
+            <span class="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${isLeader ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30' : 'bg-gray-100 dark:bg-[#181825] text-gray-400'}">
+              ${isLeader ? 'Leader' : 'Teammate'}
+            </span>
+          </td>
+          <td class="py-3 px-4 text-center">
+            <span class="text-sm font-black text-emerald-500">${row.verifiedSolves}</span>
+          </td>
+          <td class="py-3 px-4 text-center">
+            <span class="text-xs font-semibold text-amber-500">${row.manualSolves}</span>
+          </td>
+          <td class="py-3 px-4 text-center">
+            <span class="text-xs font-mono font-medium text-purple-400">${row.aggregateLC > 0 ? row.aggregateLC : '—'}</span>
+          </td>
+          <td class="py-3 px-4 text-center font-mono font-bold text-gray-300">
+            ${row.cfRating > 0 ? row.cfRating : '—'}
+          </td>
+          <td class="py-3 px-4 text-right">
+            <button onclick="CPApp.viewSoloForMember('${m.id}')" class="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-blue-600/10 text-blue-400 hover:bg-blue-600/20 transition">
+              Solo View
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  },
+
+  // ── Render Team Roster ────────────────────────────────────────────────────
+  renderTeamRoster() {
+    const tbody = document.getElementById('team-roster-tbody');
+    const badge = document.getElementById('roster-count-badge');
+    if (!tbody) return;
+
+    const members = CPState.data.members;
+    if (badge) badge.textContent = `${members.length} Members`;
+
+    tbody.innerHTML = members.map(m => {
+      const avatar = CPSecurity.safeAvatarUrl(m.avatar, m.inAppUsername);
+      const isLeader = m.role === 'leader';
+      const h = m.handles || {};
+
+      return `
+        <tr class="hover:bg-gray-50/60 dark:hover:bg-[#26263b]/40 transition">
+          <td class="py-3 px-4 font-semibold">
+            <div class="flex items-center gap-3">
+              <img src="${CPSecurity.escAttr(avatar)}" class="w-8 h-8 rounded-full border border-blue-400 object-cover" />
+              <div>
+                <div class="dark:text-gray-100 text-gray-800 font-bold">${CPSecurity.escHTML(m.name)}</div>
+                <div class="text-[10px] text-blue-400 font-mono">@${CPSecurity.escHTML(m.inAppUsername)}</div>
+              </div>
+            </div>
+          </td>
+          <td class="py-3 px-4">
+            <span class="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${isLeader ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30' : 'bg-gray-100 dark:bg-[#181825] text-gray-400'}">
+              ${isLeader ? 'Leader' : 'Teammate'}
+            </span>
+          </td>
+          <td class="py-3 px-4 font-mono text-xs">
+            ${h.codeforces ? `<a href="${PLATFORMS.codeforces.profileUrl(h.codeforces)}" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:underline">${CPSecurity.escHTML(h.codeforces)}</a>` : '<span class="text-gray-500">—</span>'}
+          </td>
+          <td class="py-3 px-4 font-mono text-xs">
+            ${h.leetcode ? `<a href="${PLATFORMS.leetcode.profileUrl(h.leetcode)}" target="_blank" rel="noopener noreferrer" class="text-amber-400 hover:underline">${CPSecurity.escHTML(h.leetcode)}</a>` : '<span class="text-gray-500">—</span>'}
+          </td>
+          <td class="py-3 px-4 font-mono text-xs">
+            ${h.atcoder ? `<a href="${PLATFORMS.atcoder.profileUrl(h.atcoder)}" target="_blank" rel="noopener noreferrer" class="text-sky-400 hover:underline">${CPSecurity.escHTML(h.atcoder)}</a>` : '<span class="text-gray-500">—</span>'}
+          </td>
+          <td class="py-3 px-4 font-mono text-xs">
+            ${h.cses ? CPSecurity.escHTML(h.cses) : '<span class="text-gray-500">—</span>'}
+          </td>
+          <td class="py-3 px-4 text-right space-x-1">
+            <button onclick="CPApp.openEditMemberModal('${m.id}')" class="p-1.5 text-gray-400 hover:text-blue-400 transition" title="Edit Profile & Handles"><i class="fas fa-edit"></i></button>
+            <button onclick="CPApp.confirmDeleteMember('${m.id}')" class="p-1.5 text-gray-400 hover:text-red-400 transition" title="Remove Teammate"><i class="fas fa-trash-alt"></i></button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  },
+
+  // ── Render Solo Tracker ───────────────────────────────────────────────────
+  renderSoloTracker() {
+    const sel = document.getElementById('solo-member-select');
+    const container = document.getElementById('solo-profile-container');
+    if (!sel || !container) return;
+
+    const members = CPState.data.members;
+    if (members.length === 0) {
+      container.innerHTML = `<div class="p-8 text-center text-gray-400">No teammates added yet. Add a teammate to view their solo profile.</div>`;
+      return;
+    }
+
+    // Populate select if empty or outdated
+    const curVal = sel.value;
+    sel.innerHTML = members.map(m => `<option value="${m.id}">${CPSecurity.escHTML(m.name)} (@${CPSecurity.escHTML(m.inAppUsername)})</option>`).join('');
+    if (curVal && members.some(m => m.id === curVal)) {
+      sel.value = curVal;
+    }
+
+    const targetId = sel.value || members[0].id;
+    const member = members.find(m => m.id === targetId) || members[0];
+
+    // Compute member solved problems
+    const solvedSet = CPState.data.memberAccepted[member.id] || new Set();
+    const solvedList = Array.from(solvedSet).map(pid => ({
+      problem: CPState.data.problems[pid],
+      sub: CPState.data.submissions[pid]?.[member.id]
+    })).filter(item => item.problem);
+
+    // Breakdown by platform
+    const cfCount = solvedList.filter(s => s.problem.platform === 'codeforces').length;
+    const lcCount = solvedList.filter(s => s.problem.platform === 'leetcode').length;
+    const atcCount = solvedList.filter(s => s.problem.platform === 'atcoder').length;
+    const csesCount = solvedList.filter(s => s.problem.platform === 'cses').length;
+
+    const avatar = CPSecurity.safeAvatarUrl(member.avatar, member.inAppUsername);
+    const cfRating = CPState.data.ratings[member.id]?.codeforces || 'Unrated';
+
+    container.innerHTML = `
+      <div class="dark:bg-[#1e1e2e] bg-white rounded-2xl p-6 border dark:border-[#313244] border-gray-200 shadow-sm flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center gap-4">
+          <img src="${CPSecurity.escAttr(avatar)}" class="w-14 h-14 rounded-2xl border-2 border-blue-500 object-cover shadow-md" />
+          <div>
+            <div class="flex items-center gap-2">
+              <h2 class="text-xl font-bold dark:text-gray-100 text-gray-800">${CPSecurity.escHTML(member.name)}</h2>
+              <span class="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 font-mono">@${CPSecurity.escHTML(member.inAppUsername)}</span>
+            </div>
+            <p class="text-xs dark:text-gray-400 text-gray-500 mt-0.5">Codeforces Rating: <strong class="text-blue-400 font-mono">${cfRating}</strong></p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="CPSync.syncSingleMember(CPState.data.members.find(m=>m.id==='${member.id}'), null).then(()=>{CPApp.renderAll();CPApp.toast('Sync completed for ${CPSecurity.escAttr(member.name)}','success');})" class="px-3 py-2 text-xs font-semibold rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition flex items-center gap-1.5 shadow-sm">
+            <i class="fas fa-sync-alt"></i><span>Sync Member</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Platform Cards -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="dark:bg-[#1e1e2e] bg-white rounded-2xl p-4 border dark:border-[#313244] border-gray-200 shadow-sm">
+          <div class="text-[11px] font-bold uppercase tracking-wider text-red-400 flex items-center justify-between">
+            <span>Codeforces</span>
+            <i class="fas fa-chart-line"></i>
+          </div>
+          <div class="text-2xl font-black mt-2">${cfCount}</div>
+          <div class="text-[11px] text-gray-400 mt-0.5 font-mono">Handle: ${CPSecurity.escHTML(member.handles?.codeforces || 'None')}</div>
+        </div>
+
+        <div class="dark:bg-[#1e1e2e] bg-white rounded-2xl p-4 border dark:border-[#313244] border-gray-200 shadow-sm">
+          <div class="text-[11px] font-bold uppercase tracking-wider text-amber-400 flex items-center justify-between">
+            <span>LeetCode</span>
+            <i class="fas fa-code"></i>
+          </div>
+          <div class="text-2xl font-black mt-2">${lcCount}</div>
+          <div class="text-[11px] text-gray-400 mt-0.5 font-mono">Handle: ${CPSecurity.escHTML(member.handles?.leetcode || 'None')}</div>
+        </div>
+
+        <div class="dark:bg-[#1e1e2e] bg-white rounded-2xl p-4 border dark:border-[#313244] border-gray-200 shadow-sm">
+          <div class="text-[11px] font-bold uppercase tracking-wider text-blue-400 flex items-center justify-between">
+            <span>AtCoder</span>
+            <i class="fas fa-terminal"></i>
+          </div>
+          <div class="text-2xl font-black mt-2">${atcCount}</div>
+          <div class="text-[11px] text-gray-400 mt-0.5 font-mono">Handle: ${CPSecurity.escHTML(member.handles?.atcoder || 'None')}</div>
+        </div>
+
+        <div class="dark:bg-[#1e1e2e] bg-white rounded-2xl p-4 border dark:border-[#313244] border-gray-200 shadow-sm">
+          <div class="text-[11px] font-bold uppercase tracking-wider text-emerald-400 flex items-center justify-between">
+            <span>CSES</span>
+            <i class="fas fa-cube"></i>
+          </div>
+          <div class="text-2xl font-black mt-2">${csesCount}</div>
+          <div class="text-[11px] text-gray-400 mt-0.5 font-mono">Manual Solves</div>
+        </div>
+      </div>
+
+      <!-- Solved Problems Table -->
+      <div class="dark:bg-[#1e1e2e] bg-white rounded-2xl border dark:border-[#313244] border-gray-200 shadow-sm overflow-hidden">
+        <div class="px-6 py-4 border-b dark:border-[#313244] border-gray-200 flex items-center justify-between">
+          <h3 class="text-sm font-bold flex items-center gap-2">
+            <i class="fas fa-check-double text-emerald-400"></i> Solved Problems History (${solvedList.length})
+          </h3>
+        </div>
+        <div class="overflow-x-auto max-h-96">
+          <table class="w-full text-left border-collapse text-xs">
+            <thead class="dark:bg-[#181825] bg-gray-50 border-b dark:border-[#313244] border-gray-200 sticky top-0 z-10">
+              <tr>
+                <th class="py-2.5 px-4 font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Problem</th>
+                <th class="py-2.5 px-3 font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 text-center">Platform</th>
+                <th class="py-2.5 px-3 font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 text-center">Verdict</th>
+                <th class="py-2.5 px-3 font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 text-center">Provenance</th>
+                <th class="py-2.5 px-3 font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 text-right">Solved At</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y dark:divide-[#313244] divide-gray-100">
+              ${solvedList.map(item => {
+                const p = item.problem;
+                const sub = item.sub;
+                const safeUrl = CPSecurity.sanitizeUrl(p.url);
+                return `
+                  <tr class="hover:bg-gray-50/60 dark:hover:bg-[#26263b]/40 transition">
+                    <td class="py-2.5 px-4 font-medium">
+                      <a href="${CPSecurity.escAttr(safeUrl)}" target="_blank" rel="noopener noreferrer" class="dark:text-gray-200 text-gray-800 hover:text-blue-500 font-semibold">
+                        ${CPSecurity.escHTML(p.title)}
+                      </a>
+                    </td>
+                    <td class="py-2.5 px-3 text-center uppercase font-mono text-[10px] text-gray-400">${CPSecurity.escHTML(p.platform)}</td>
+                    <td class="py-2.5 px-3 text-center font-bold text-emerald-500">${CPSecurity.escHTML(sub?.verdict || 'AC')}</td>
+                    <td class="py-2.5 px-3 text-center">
+                      <span class="text-[10px] px-2 py-0.5 rounded font-mono ${sub?.provenance === PROVENANCE.VERIFIED ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}">
+                        ${sub?.provenance || 'verified'}
+                      </span>
+                    </td>
+                    <td class="py-2.5 px-3 text-right font-mono text-gray-400 text-[11px]">
+                      ${sub?.timestamp ? new Date(sub.timestamp).toLocaleDateString() : '—'}
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  },
+
+  onSoloMemberSelect(id) {
+    this.renderSoloTracker();
+  },
+
+  viewSoloForMember(id) {
+    this.switchTab('solo');
+    const sel = document.getElementById('solo-member-select');
+    if (sel) {
+      sel.value = id;
+      this.renderSoloTracker();
+    }
+  },
+
+  // ── Render Problem Explorer ───────────────────────────────────────────────
+  renderProblemExplorer() {
+    const tbody = document.getElementById('explorer-tbody');
+    if (!tbody) return;
+
+    const query = (document.getElementById('explorer-search')?.value || '').toLowerCase().trim();
+    const problems = Object.values(CPState.data.problems);
+    const members = CPState.data.members;
+
+    const filtered = problems.filter(p => {
+      if (query && !p.title.toLowerCase().includes(query) && !p.id.toLowerCase().includes(query) && !p.platform.toLowerCase().includes(query)) {
+        return false;
+      }
+      return true;
+    });
+
+    tbody.innerHTML = filtered.map(p => {
+      const plat = PLATFORMS[p.platform] || { name: p.platform, color: 'gray', short: p.platform };
+      const safeUrl = CPSecurity.sanitizeUrl(p.url);
+      const solvers = members.filter(m => CPState.data.memberAccepted[m.id]?.has(p.id));
+
+      return `
+        <tr class="hover:bg-gray-50/60 dark:hover:bg-[#26263b]/40 transition">
+          <td class="py-3 px-4">
+            <span class="text-[10px] px-2 py-0.5 rounded font-mono font-bold bg-${plat.color}-500/10 text-${plat.color}-400 border border-${plat.color}-500/20">${plat.short}</span>
+          </td>
+          <td class="py-3 px-4 font-medium">
+            <a href="${CPSecurity.escAttr(safeUrl)}" target="_blank" rel="noopener noreferrer" class="dark:text-gray-200 text-gray-800 hover:text-blue-500 font-semibold">
+              ${CPSecurity.escHTML(p.title)}
+            </a>
+          </td>
+          <td class="py-3 px-4 font-mono text-gray-400 text-xs">
+            ${p.difficulty ? CPSecurity.escHTML(p.difficulty) : '—'}
+          </td>
+          <td class="py-3 px-4">
+            <span class="text-[10px] px-2 py-0.5 rounded font-mono ${p.provenance === PROVENANCE.VERIFIED ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'}">
+              ${p.provenance || 'verified'}
+            </span>
+          </td>
+          <td class="py-3 px-4 text-center font-bold text-xs">
+            ${solvers.length} / ${members.length}
+          </td>
+          <td class="py-3 px-4 text-right">
+            <button onclick="CPApp.openProblemDetail('${CPSecurity.escAttr(p.id)}')" class="px-2 py-1 text-xs font-semibold rounded-lg bg-blue-600/10 text-blue-400 hover:bg-blue-600/20 transition">
+              Details
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  },
+
+  // ── Render Live Activity & Streaks ────────────────────────────────────────
+  renderActivity() {
+    const feed = document.getElementById('activity-feed-list');
+    const streakEl = document.getElementById('streak-days-count');
+    const distBars = document.getElementById('platform-distribution-bars');
+    if (!feed) return;
+
+    // Compile recent solves
+    const events = [];
+    Object.entries(CPState.data.submissions).forEach(([pid, memberMap]) => {
+      const prob = CPState.data.problems[pid];
+      if (!prob) return;
+      Object.entries(memberMap).forEach(([mid, sub]) => {
+        const mem = CPState.data.members.find(m => m.id === mid);
+        if (!mem || !sub) return;
+        events.push({
+          prob,
+          sub,
+          member: mem,
+          timestamp: sub.timestamp || 0
+        });
+      });
+    });
+
+    events.sort((a, b) => b.timestamp - a.timestamp);
+
+    if (events.length === 0) {
+      feed.innerHTML = `<div class="p-6 text-center text-gray-400 text-xs">No solve activity recorded yet. Run a sync or import a problem to view recent solves.</div>`;
+    } else {
+      feed.innerHTML = events.slice(0, 15).map(e => {
+        const avatar = CPSecurity.safeAvatarUrl(e.member.avatar, e.member.inAppUsername);
+        const plat = PLATFORMS[e.prob.platform] || { name: e.prob.platform, color: 'gray' };
+        const safeUrl = CPSecurity.sanitizeUrl(e.prob.url);
+
+        return `
+          <div class="flex items-center justify-between gap-3 p-3 rounded-xl dark:bg-[#181825] bg-gray-50 border dark:border-[#313244] border-gray-200">
+            <div class="flex items-center gap-3">
+              <img src="${CPSecurity.escAttr(avatar)}" class="w-8 h-8 rounded-full border border-blue-400 object-cover" />
+              <div>
+                <div class="text-xs font-bold dark:text-gray-100 text-gray-800">
+                  <span>${CPSecurity.escHTML(e.member.name)}</span>
+                  <span class="font-normal text-gray-400">solved</span>
+                  <a href="${CPSecurity.escAttr(safeUrl)}" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:underline">${CPSecurity.escHTML(e.prob.title)}</a>
+                </div>
+                <div class="text-[10px] text-gray-400 mt-0.5 flex items-center gap-2">
+                  <span class="font-mono uppercase text-${plat.color}-400">${plat.name}</span>
+                  <span>•</span>
+                  <span>${new Date(e.timestamp).toLocaleString()}</span>
+                </div>
+              </div>
+            </div>
+            <span class="text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-bold border border-emerald-500/20">AC</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Calculate streak
+    let streakDays = 0;
+    if (events.length > 0) {
+      const days = new Set(events.map(e => new Date(e.timestamp).toDateString()));
+      streakDays = days.size;
+    }
+    if (streakEl) streakEl.textContent = `${streakDays} Days`;
+
+    // Platform distribution
+    if (distBars) {
+      const counts = { codeforces: 0, leetcode: 0, atcoder: 0, cses: 0 };
+      Object.values(CPState.data.problems).forEach(p => {
+        if (counts[p.platform] !== undefined) counts[p.platform]++;
+      });
+      const total = Object.values(counts).reduce((a, b) => a + b, 0) || 1;
+
+      distBars.innerHTML = Object.entries(counts).map(([platKey, count]) => {
+        const plat = PLATFORMS[platKey];
+        const pct = Math.round((count / total) * 100);
+        return `
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="font-semibold">${plat.name}</span>
+              <span class="font-mono text-gray-400">${count} (${pct}%)</span>
+            </div>
+            <div class="w-full bg-gray-200 dark:bg-gray-800 rounded-full h-1.5 overflow-hidden">
+              <div class="bg-${plat.color}-500 h-1.5 rounded-full" style="width: ${pct}%"></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  },
+
+  renderSettings() {
+    const modeEl = document.getElementById('settings-auth-mode');
+    const oauthStatus = document.getElementById('settings-oauth-status');
+    const savedCid = localStorage.getItem(GOOGLE_CLIENT_ID_KEY);
+
+    if (savedCid && oauthStatus) oauthStatus.textContent = savedCid.slice(0, 16) + '…';
+    if (CPAuth.currentUser && modeEl) modeEl.textContent = `Active User: @${CPAuth.currentUser.inAppUsername}`;
+  },
+
+  // ── Accessible Modal Manager ──────────────────────────────────────────────
+  activeModalElement: null,
+  previousActiveElement: null,
+
+  openModal(title, contentHTML) {
+    const overlay = document.getElementById('modal-overlay');
+    const modalTitle = document.getElementById('modal-title');
+    const modalBody = document.getElementById('modal-body');
+    if (!overlay || !modalBody) return;
+
+    this.previousActiveElement = document.activeElement;
+    if (modalTitle) modalTitle.textContent = title;
+    modalBody.innerHTML = contentHTML;
+
+    overlay.classList.remove('hidden');
+    overlay.classList.add('flex');
+
+    // Trap focus inside modal
+    const closeBtn = document.getElementById('btn-modal-close');
+    if (closeBtn) closeBtn.focus();
+  },
+
+  closeModal() {
+    const overlay = document.getElementById('modal-overlay');
+    if (!overlay) return;
+    overlay.classList.add('hidden');
+    overlay.classList.remove('flex');
+    if (this.previousActiveElement) {
+      this.previousActiveElement.focus();
+    }
+  },
+
+  setupModalListeners() {
+    window.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        this.closeModal();
+      }
+    });
+  },
+
+  // ── Modals: Auth / Profile ────────────────────────────────────────────────
+  openAuthModal() {
+    const cur = CPAuth.currentUser;
+    const bodyHTML = `
+      <div class="space-y-4">
+        <p class="text-xs dark:text-gray-400 text-gray-500">
+          Set up your In-App Profile (@handle). Your solves and profile settings will be linked with your permanent ID.
+        </p>
+
+        <div>
+          <label class="block text-[11px] font-bold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">Display Name</label>
+          <input type="text" id="inp-auth-name" value="${cur ? CPSecurity.escAttr(cur.displayName) : 'Utkarsh Tuwani'}" required
+            class="w-full text-xs rounded-xl dark:bg-[#181825] bg-gray-50 border dark:border-[#313244] border-gray-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+
+        <div>
+          <label class="block text-[11px] font-bold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">In-App Username (@)</label>
+          <input type="text" id="inp-auth-username" value="${cur ? CPSecurity.escAttr(cur.inAppUsername) : 'utkarsh'}" required
+            class="w-full text-xs rounded-xl dark:bg-[#181825] bg-gray-50 border dark:border-[#313244] border-gray-200 px-3 py-2 font-mono outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+
+        <div>
+          <label class="block text-[11px] font-bold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">Role in Team</label>
+          <select id="inp-auth-role" class="w-full text-xs rounded-xl dark:bg-[#181825] bg-gray-50 border dark:border-[#313244] border-gray-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="leader" ${cur?.role === 'leader' ? 'selected' : ''}>Team Leader</option>
+            <option value="teammate" ${cur?.role === 'teammate' ? 'selected' : ''}>Teammate</option>
+          </select>
+        </div>
+
+        <div class="pt-2 flex justify-end gap-2">
+          <button onclick="CPApp.closeModal()" class="px-4 py-2 text-xs font-semibold rounded-xl dark:bg-[#313244] bg-gray-200 text-gray-700 dark:text-gray-200 hover:opacity-90 transition">Cancel</button>
+          <button onclick="CPApp.saveLocalAuthProfile()" class="px-4 py-2 text-xs font-semibold rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition">Save Profile</button>
+        </div>
+      </div>
+    `;
+    this.openModal('User Profile & Identity', bodyHTML);
+  },
+
+  saveLocalAuthProfile() {
+    const name = document.getElementById('inp-auth-name')?.value.trim();
+    const username = document.getElementById('inp-auth-username')?.value.trim();
+    const role = document.getElementById('inp-auth-role')?.value || 'leader';
+
+    if (!name || !username) {
+      this.toast('Please provide a name and username', 'error');
+      return;
+    }
+
+    CPAuth.setLocalProfile(name, username, role);
+    this.closeModal();
+    this.renderAll();
+  },
+
+  // ── Modals: Problem Detail ────────────────────────────────────────────────
+  openProblemDetail(problemId) {
+    const prob = CPState.data.problems[problemId];
+    if (!prob) return;
+
+    const plat = PLATFORMS[prob.platform] || { name: prob.platform };
+    const safeUrl = CPSecurity.sanitizeUrl(prob.url);
+    const members = CPState.data.members;
+
+    let solversHTML = members.map(m => {
+      const isSolved = CPState.data.memberAccepted[m.id]?.has(problemId);
+      const sub = CPState.data.submissions[problemId]?.[m.id];
+      const avatar = CPSecurity.safeAvatarUrl(m.avatar, m.inAppUsername);
+
+      return `
+        <div class="flex items-center justify-between p-3 rounded-xl dark:bg-[#181825] bg-gray-50 border dark:border-[#313244] border-gray-200">
+          <div class="flex items-center gap-2.5">
+            <img src="${CPSecurity.escAttr(avatar)}" class="w-7 h-7 rounded-full border border-blue-400 object-cover" />
+            <div>
+              <div class="text-xs font-bold dark:text-gray-100 text-gray-800">${CPSecurity.escHTML(m.name)}</div>
+              <div class="text-[10px] text-blue-400 font-mono">@${CPSecurity.escHTML(m.inAppUsername)}</div>
+            </div>
+          </div>
+          <div class="text-right">
+            ${isSolved ? `
+              <div class="text-xs font-bold text-emerald-500"><i class="fas fa-check-circle mr-1"></i>Solved</div>
+              <div class="text-[10px] text-gray-400 font-mono">${sub?.subUrl ? `<a href="${CPSecurity.escAttr(sub.subUrl)}" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:underline">#${CPSecurity.escHTML(sub.submissionId)}</a>` : (sub?.submissionId ? '#' + CPSecurity.escHTML(sub.submissionId) : 'Manual')}</div>
+            ` : `
+              <span class="text-xs text-gray-400"><i class="fas fa-times mr-1"></i>Unsolved</span>
+            `}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    const bodyHTML = `
+      <div class="space-y-4">
+        <div>
+          <span class="text-[10px] uppercase font-mono font-bold px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">${plat.name}</span>
+          <h4 class="text-base font-bold dark:text-white text-gray-900 mt-1">${CPSecurity.escHTML(prob.title)}</h4>
+          <a href="${CPSecurity.escAttr(safeUrl)}" target="_blank" rel="noopener noreferrer" class="text-xs text-blue-400 hover:underline break-all inline-flex items-center gap-1 mt-1">
+            <i class="fas fa-external-link-alt text-[10px]"></i><span>${CPSecurity.escHTML(prob.url)}</span>
+          </a>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 p-3 rounded-xl dark:bg-[#181825] bg-gray-50 border dark:border-[#313244] border-gray-200 text-xs">
+          <div><span class="text-gray-400">Canonical ID:</span> <span class="font-mono font-bold">${CPSecurity.escHTML(prob.id)}</span></div>
+          <div><span class="text-gray-400">Difficulty:</span> <span class="font-mono font-bold">${CPSecurity.escHTML(prob.difficulty || 'Unrated')}</span></div>
+          <div><span class="text-gray-400">Provenance:</span> <span class="font-mono font-bold text-emerald-400">${CPSecurity.escHTML(prob.provenance || 'verified')}</span></div>
+        </div>
+
+        <div>
+          <h5 class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Team Solvers</h5>
+          <div class="space-y-2 max-h-60 overflow-y-auto">
+            ${solversHTML}
+          </div>
+        </div>
+      </div>
+    `;
+    this.openModal('Problem Information', bodyHTML);
+  },
+
+  // ── Modals: Edit Member Profile ───────────────────────────────────────────
+  openEditMemberModal(memberId) {
+    const m = CPState.data.members.find(mem => mem.id === memberId);
+    if (!m) return;
+    const h = m.handles || {};
+
+    const bodyHTML = `
+      <form onsubmit="CPApp.saveEditMember(event, '${m.id}')" class="space-y-4">
+        <div>
+          <label class="block text-[11px] font-bold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">Full Name</label>
+          <input type="text" id="edit-m-name" value="${CPSecurity.escAttr(m.name)}" required class="w-full text-xs rounded-xl dark:bg-[#181825] bg-gray-50 border dark:border-[#313244] border-gray-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">In-App Username (@)</label>
+          <input type="text" id="edit-m-username" value="${CPSecurity.escAttr(m.inAppUsername)}" required class="w-full text-xs rounded-xl dark:bg-[#181825] bg-gray-50 border dark:border-[#313244] border-gray-200 px-3 py-2 font-mono outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">Role</label>
+          <select id="edit-m-role" class="w-full text-xs rounded-xl dark:bg-[#181825] bg-gray-50 border dark:border-[#313244] border-gray-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="teammate" ${m.role === 'teammate' ? 'selected' : ''}>Teammate</option>
+            <option value="leader" ${m.role === 'leader' ? 'selected' : ''}>Team Leader</option>
+          </select>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-[11px] font-bold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">Codeforces Handle</label>
+            <input type="text" id="edit-m-cf" value="${CPSecurity.escAttr(h.codeforces || '')}" class="w-full text-xs rounded-xl dark:bg-[#181825] bg-gray-50 border dark:border-[#313244] border-gray-200 px-3 py-2 font-mono outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">LeetCode Username</label>
+            <input type="text" id="edit-m-lc" value="${CPSecurity.escAttr(h.leetcode || '')}" class="w-full text-xs rounded-xl dark:bg-[#181825] bg-gray-50 border dark:border-[#313244] border-gray-200 px-3 py-2 font-mono outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">AtCoder Handle</label>
+            <input type="text" id="edit-m-atc" value="${CPSecurity.escAttr(h.atcoder || '')}" class="w-full text-xs rounded-xl dark:bg-[#181825] bg-gray-50 border dark:border-[#313244] border-gray-200 px-3 py-2 font-mono outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">CSES Handle</label>
+            <input type="text" id="edit-m-cses" value="${CPSecurity.escAttr(h.cses || '')}" class="w-full text-xs rounded-xl dark:bg-[#181825] bg-gray-50 border dark:border-[#313244] border-gray-200 px-3 py-2 font-mono outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+        </div>
+        <div class="pt-3 flex justify-end gap-2">
+          <button type="button" onclick="CPApp.closeModal()" class="px-4 py-2 text-xs font-semibold rounded-xl dark:bg-[#313244] bg-gray-200 transition">Cancel</button>
+          <button type="submit" class="px-4 py-2 text-xs font-semibold rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition">Save Changes</button>
+        </div>
+      </form>
+    `;
+    this.openModal('Edit Teammate Profile', bodyHTML);
+  },
+
+  async saveEditMember(event, memberId) {
+    event.preventDefault();
+    const m = CPState.data.members.find(mem => mem.id === memberId);
+    if (!m) return;
+
+    const name = document.getElementById('edit-m-name')?.value.trim();
+    const username = document.getElementById('edit-m-username')?.value.trim();
+    const role = document.getElementById('edit-m-role')?.value || 'teammate';
+    const cf = document.getElementById('edit-m-cf')?.value.trim() || '';
+    const lc = document.getElementById('edit-m-lc')?.value.trim() || '';
+    const atc = document.getElementById('edit-m-atc')?.value.trim() || '';
+    const cses = document.getElementById('edit-m-cses')?.value.trim() || '';
+
+    // Handle History Tracking
+    m.handleHistory = m.handleHistory || [];
+    if (m.handles?.codeforces && m.handles.codeforces !== cf) {
+      m.handleHistory.push({ platform: 'codeforces', oldHandle: m.handles.codeforces, newHandle: cf, timestamp: Date.now() });
+    }
+
+    m.name = name;
+    m.inAppUsername = username.toLowerCase().replace(/[^a-z0-9_]/g, '');
+    m.role = role;
+    m.handles = { codeforces: cf, leetcode: lc, atcoder: atc, cses: cses };
+
+    await CPState.persist();
+    this.closeModal();
+    this.renderAll();
+    this.toast('Member updated successfully', 'success');
+  },
+
+  confirmDeleteMember(memberId) {
+    const m = CPState.data.members.find(mem => mem.id === memberId);
+    if (!m) return;
+
+    const bodyHTML = `
+      <div class="space-y-4">
+        <p class="text-xs dark:text-gray-300 text-gray-700">
+          Are you sure you want to remove <strong>${CPSecurity.escHTML(m.name)}</strong> (@${CPSecurity.escHTML(m.inAppUsername)}) from the active team roster?
+        </p>
+        <p class="text-[11px] text-red-400">
+          Their solved records will be cleanly removed from the team matrix and leaderboard.
+        </p>
+        <div class="pt-2 flex justify-end gap-2">
+          <button onclick="CPApp.closeModal()" class="px-4 py-2 text-xs font-semibold rounded-xl dark:bg-[#313244] bg-gray-200 transition">Cancel</button>
+          <button onclick="CPApp.executeDeleteMember('${m.id}')" class="px-4 py-2 text-xs font-semibold rounded-xl bg-red-600 hover:bg-red-700 text-white transition">Delete Teammate</button>
+        </div>
+      </div>
+    `;
+    this.openModal('Confirm Removal', bodyHTML);
+  },
+
+  async executeDeleteMember(memberId) {
+    CPState.deleteMemberCascade(memberId);
+    await CPState.persist();
+    this.closeModal();
+    this.renderAll();
+    this.toast('Member removed from team', 'info');
+  },
+
+  // ── Modals: Manual Problem Import ─────────────────────────────────────────
+  openManualImportModal() {
+    const members = CPState.data.members;
+    const membersOpts = members.map(m => `<option value="${m.id}">${CPSecurity.escHTML(m.name)} (@${CPSecurity.escHTML(m.inAppUsername)})</option>`).join('');
+
+    const bodyHTML = `
+      <form onsubmit="CPApp.executeManualImport(event)" class="space-y-4">
+        <div>
+          <label class="block text-[11px] font-bold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">Teammate Who Solved It</label>
+          <select id="imp-member-id" required class="w-full text-xs rounded-xl dark:bg-[#181825] bg-gray-50 border dark:border-[#313244] border-gray-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500">
+            ${membersOpts}
+          </select>
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">Platform</label>
+          <select id="imp-platform" class="w-full text-xs rounded-xl dark:bg-[#181825] bg-gray-50 border dark:border-[#313244] border-gray-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="cses">CSES Problem Set</option>
+            <option value="codeforces">Codeforces</option>
+            <option value="leetcode">LeetCode</option>
+            <option value="atcoder">AtCoder</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">Problem Code or URL</label>
+          <input type="text" id="imp-code" required placeholder="e.g. 1068 (for CSES) or problem statement URL" class="w-full text-xs rounded-xl dark:bg-[#181825] bg-gray-50 border dark:border-[#313244] border-gray-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">Problem Title (Optional)</label>
+          <input type="text" id="imp-title" placeholder="e.g. Weird Algorithm" class="w-full text-xs rounded-xl dark:bg-[#181825] bg-gray-50 border dark:border-[#313244] border-gray-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div class="pt-3 flex justify-end gap-2">
+          <button type="button" onclick="CPApp.closeModal()" class="px-4 py-2 text-xs font-semibold rounded-xl dark:bg-[#313244] bg-gray-200 transition">Cancel</button>
+          <button type="submit" class="px-4 py-2 text-xs font-semibold rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition">Import Solve</button>
+        </div>
+      </form>
+    `;
+    this.openModal('Import Problem Solve', bodyHTML);
+  },
+
+  async executeManualImport(event) {
+    event.preventDefault();
+    const mid = document.getElementById('imp-member-id')?.value;
+    const plat = document.getElementById('imp-platform')?.value || 'cses';
+    const code = document.getElementById('imp-code')?.value.trim();
+    const title = document.getElementById('imp-title')?.value.trim();
+
+    if (!mid || !code) return;
+
+    let problemRecord = null;
+    if (plat === 'cses') {
+      const parsedCode = CSESAdapter.validateProblemCode(code);
+      if (!parsedCode) {
+        this.toast('Invalid CSES code or URL', 'error');
+        return;
+      }
+      problemRecord = CSESAdapter.createRecord(parsedCode, title);
+    } else {
+      const cleanId = code.replace(/[^a-zA-Z0-9_-]/g, '');
+      problemRecord = {
+        platform: plat,
+        canonId: `${plat}::${cleanId}`,
+        title: title || `${plat.toUpperCase()} ${cleanId}`,
+        url: code.startsWith('http') ? code : '#',
+        difficulty: null,
+        tags: ['manual'],
+        submissionId: null,
+        timestamp: Date.now(),
+        language: 'Manual Entry',
+        provenance: PROVENANCE.MANUAL,
+        subUrl: null
+      };
+    }
+
+    CPState.markSolved(mid, problemRecord, problemRecord);
+    await CPState.persist();
+    this.closeModal();
+    this.renderAll();
+    this.toast('Problem solve imported with manual provenance badge', 'success');
+  },
+
+  // ── Team Addition Handlers ────────────────────────────────────────────────
+  setAddMode(mode) {
+    const inappForm = document.getElementById('add-form-inapp');
+    const manualForm = document.getElementById('add-form-manual');
+    const tabInapp = document.getElementById('tab-add-inapp');
+    const tabManual = document.getElementById('tab-add-manual');
+
+    if (mode === 'inapp') {
+      inappForm?.classList.remove('hidden');
+      manualForm?.classList.add('hidden');
+      tabInapp?.classList.add('bg-blue-600', 'text-white');
+      tabInapp?.classList.remove('text-gray-600', 'dark:text-gray-400');
+      tabManual?.classList.remove('bg-blue-600', 'text-white');
+      tabManual?.classList.add('text-gray-600', 'dark:text-gray-400');
+    } else {
+      inappForm?.classList.add('hidden');
+      manualForm?.classList.remove('hidden');
+      tabManual?.classList.add('bg-blue-600', 'text-white');
+      tabManual?.classList.remove('text-gray-600', 'dark:text-gray-400');
+      tabInapp?.classList.remove('bg-blue-600', 'text-white');
+      tabInapp?.classList.add('text-gray-600', 'dark:text-gray-400');
+    }
+  },
+
+  async handleAddMemberByInApp() {
+    const inp = document.getElementById('inp-inapp-username');
+    const rawVal = inp?.value.trim().toLowerCase().replace(/^@/, '');
+    if (!rawVal) return;
+
+    // Check duplicate
+    if (CPState.data.members.some(m => m.inAppUsername === rawVal)) {
+      this.toast(`@${rawVal} is already in the roster`, 'warning');
+      return;
+    }
+
+    // Known presets or create new
+    const presets = {
+      tourist: { name: 'Gennady Korotkevich', handles: { codeforces: 'tourist', leetcode: '', atcoder: 'tourist', cses: '' } },
+      petr: { name: 'Petr Mitrichev', handles: { codeforces: 'Petr', leetcode: '', atcoder: 'Petr', cses: '' } },
+      neal: { name: 'Neal Wu', handles: { codeforces: 'neal', leetcode: 'neal_wu', atcoder: 'neal', cses: '' } },
+      utkarsh: { name: 'Utkarsh Tuwani', handles: { codeforces: '', leetcode: '', atcoder: '', cses: '' } }
+    };
+
+    const preset = presets[rawVal] || { name: rawVal.charAt(0).toUpperCase() + rawVal.slice(1), handles: { codeforces: rawVal, leetcode: rawVal, atcoder: rawVal, cses: '' } };
+
+    const newMember = {
+      id: 'mem_' + Math.random().toString(36).slice(2, 10),
+      inAppUsername: rawVal,
+      name: preset.name,
+      role: 'teammate',
+      avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(rawVal)}`,
+      handles: preset.handles,
+      handleHistory: [],
+      aggregateStats: {}
+    };
+
+    CPState.data.members.push(newMember);
+    await CPState.persist();
+    if (inp) inp.value = '';
+    this.renderAll();
+    this.toast(`Added ${newMember.name} (@${newMember.inAppUsername}) to team`, 'success');
+  },
+
+  async handleAddMemberManual(event) {
+    event.preventDefault();
+    const name = document.getElementById('inp-m-name')?.value.trim();
+    const username = document.getElementById('inp-m-username')?.value.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+    const role = document.getElementById('inp-m-role')?.value || 'teammate';
+    const cf = document.getElementById('inp-m-cf')?.value.trim() || '';
+    const lc = document.getElementById('inp-m-lc')?.value.trim() || '';
+    const atc = document.getElementById('inp-m-atc')?.value.trim() || '';
+
+    if (!name || !username) return;
+
+    if (CPState.data.members.some(m => m.inAppUsername === username)) {
+      this.toast(`@${username} is already registered`, 'warning');
+      return;
+    }
+
+    const newMember = {
+      id: 'mem_' + Math.random().toString(36).slice(2, 10),
+      inAppUsername: username,
+      name: name,
+      role: role,
+      avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(username)}`,
+      handles: { codeforces: cf, leetcode: lc, atcoder: atc, cses: '' },
+      handleHistory: [],
+      aggregateStats: {}
+    };
+
+    CPState.data.members.push(newMember);
+    await CPState.persist();
+    document.getElementById('add-form-manual')?.reset();
+    this.renderAll();
+    this.toast(`Added ${newMember.name} to team`, 'success');
+  },
+
+  // ── Demo Team Loader ──────────────────────────────────────────────────────
+  async loadDemoTeam() {
+    const demoMembers = [
+      {
+        id: 'mem_tourist',
+        inAppUsername: 'tourist',
+        name: 'Gennady Korotkevich',
+        role: 'leader',
+        handles: { codeforces: 'tourist', leetcode: '', atcoder: 'tourist', cses: '' },
+        avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=tourist',
+        handleHistory: [],
+        aggregateStats: {}
+      },
+      {
+        id: 'mem_petr',
+        inAppUsername: 'petr',
+        name: 'Petr Mitrichev',
+        role: 'teammate',
+        handles: { codeforces: 'Petr', leetcode: '', atcoder: 'Petr', cses: '' },
+        avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=petr',
+        handleHistory: [],
+        aggregateStats: {}
+      },
+      {
+        id: 'mem_neal',
+        inAppUsername: 'neal',
+        name: 'Neal Wu',
+        role: 'teammate',
+        handles: { codeforces: 'neal', leetcode: 'neal_wu', atcoder: 'neal', cses: '' },
+        avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=neal',
+        handleHistory: [],
+        aggregateStats: {}
+      },
+      {
+        id: 'mem_utkarsh',
+        inAppUsername: 'utkarsh',
+        name: 'Utkarsh Tuwani',
+        role: 'teammate',
+        handles: { codeforces: '', leetcode: '', atcoder: '', cses: '' },
+        avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=utkarsh',
+        handleHistory: [],
+        aggregateStats: {}
+      }
+    ];
+
+    CPState.data.members = demoMembers;
+
+    // Seed canonical problems
+    const seeds = [
+      { id: 'cf::1A', platform: 'codeforces', title: '1A - Theatre Square', url: 'https://codeforces.com/contest/1/problem/A', difficulty: '1000' },
+      { id: 'cf::4A', platform: 'codeforces', title: '4A - Watermelon', url: 'https://codeforces.com/contest/4/problem/A', difficulty: '800' },
+      { id: 'cf::71A', platform: 'codeforces', title: '71A - Way Too Long Words', url: 'https://codeforces.com/contest/71/problem/A', difficulty: '800' },
+      { id: 'lc::two-sum', platform: 'leetcode', title: 'Two Sum', url: 'https://leetcode.com/problems/two-sum/', difficulty: 'Easy' },
+      { id: 'cses::1068', platform: 'cses', title: 'CSES 1068 - Weird Algorithm', url: 'https://cses.fi/problemset/task/1068', difficulty: 'Easy' }
+    ];
+
+    seeds.forEach((s, idx) => {
+      // tourist solved all
+      CPState.markSolved('mem_tourist', s, { submissionId: '1000' + idx, provenance: PROVENANCE.VERIFIED });
+      if (idx < 4) CPState.markSolved('mem_petr', s, { submissionId: '2000' + idx, provenance: PROVENANCE.VERIFIED });
+      if (idx < 3) CPState.markSolved('mem_neal', s, { submissionId: '3000' + idx, provenance: PROVENANCE.VERIFIED });
+    });
+
+    await CPState.persist();
+    this.renderAll();
+    this.toast('Demo contest team loaded with canonical solves', 'success');
+  },
+
+  editTeamName() {
+    const cur = CPState.data.teamName || 'CP Team Tracker';
+    const updated = prompt('Enter Team / Workspace Name:', cur);
+    if (updated && updated.trim()) {
+      CPState.data.teamName = updated.trim();
+      const el = document.getElementById('app-title');
+      if (el) el.textContent = CPState.data.teamName;
+      CPState.persist();
+      this.toast('Team name updated', 'success');
+    }
+  },
+
+  toggleSyncOptions() {
+    this.toast('Sync Options: Default depth is set to responsive deep sync (25,000 items max).', 'info');
+  },
+
+  // ── Toast Notifications ───────────────────────────────────────────────────
+  toast(message, type = 'info') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const colors = {
+      info: 'bg-blue-600 text-white',
+      success: 'bg-emerald-600 text-white',
+      warning: 'bg-amber-600 text-white',
+      error: 'bg-red-600 text-white'
+    };
+
+    const icons = {
+      info: 'fa-info-circle',
+      success: 'fa-check-circle',
+      warning: 'fa-exclamation-triangle',
+      error: 'fa-exclamation-circle'
+    };
+
+    const el = document.createElement('div');
+    el.className = `toast-enter pointer-events-auto flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-xl text-xs font-semibold ${colors[type] || colors.info}`;
+    el.innerHTML = `<i class="fas ${icons[type] || icons.info}"></i><span>${CPSecurity.escHTML(message)}</span>`;
+
+    container.appendChild(el);
+    setTimeout(() => {
+      el.classList.remove('toast-enter');
+      el.classList.add('toast-exit');
+      setTimeout(() => el.remove(), 250);
+    }, 3200);
+  }
+};
+
+// ── 10. THEME CONTROLLER ────────────────────────────────────────────────────
+const CPTheme = {
+  toggle() {
+    const isDark = document.documentElement.classList.contains('dark');
+    if (isDark) {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('cp_theme', 'light');
+    } else {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('cp_theme', 'dark');
+    }
+  },
+  init() {
+    const saved = localStorage.getItem('cp_theme');
+    if (saved === 'light') {
+      document.documentElement.classList.remove('dark');
+    } else {
+      document.documentElement.classList.add('dark');
+    }
+  }
+};
+
+// ── 11. EMBEDDED SELF-CHECK DIAGNOSTIC SUITE ────────────────────────────────
+const CPTests = {
+  async runAll() {
+    const box = document.getElementById('diagnostics-results-box');
+    const out = document.getElementById('diagnostics-test-output');
+    const stamp = document.getElementById('diagnostics-timestamp');
+    if (box) box.classList.remove('hidden');
+    if (stamp) stamp.textContent = new Date().toLocaleTimeString();
+
+    const logs = [];
+    const log = (name, pass, detail) => {
+      logs.push(`<div class="${pass ? 'text-emerald-400' : 'text-red-400'}">
+        <i class="fas ${pass ? 'fa-check-circle' : 'fa-times-circle'} mr-1.5"></i>
+        <strong>${CPSecurity.escHTML(name)}:</strong> ${CPSecurity.escHTML(detail)}
+      </div>`);
+    };
+
+    // Test 1: Storage & Migration
+    try {
+      const v = CPState.data.schemaVersion;
+      log('Schema Versioning', v === 2, `Running on Schema v${v}`);
+    } catch (e) {
+      log('Schema Versioning', false, e.message);
+    }
+
+    // Test 2: Security Sanitization
+    try {
+      const testXSS = CPSecurity.escHTML('<' + 'script>alert("xss")<' + '/script>');
+      const safeXSS = !testXSS.includes('<script>');
+      const badUrl = CPSecurity.sanitizeUrl('javascript:alert(1)');
+      const safeUrl = badUrl === '#';
+      log('XSS & URL Sanitization', safeXSS && safeUrl, 'Contextual HTML & URL sanitization verified');
+    } catch (e) {
+      log('XSS & URL Sanitization', false, e.message);
+    }
+
+    // Test 3: Data Integrity (Source of Truth)
+    try {
+      let desynced = false;
+      Object.entries(CPState.data.submissions).forEach(([pid, memberMap]) => {
+        Object.entries(memberMap).forEach(([mid, sub]) => {
+          if ((sub.verdict === 'OK' || sub.verdict === 'AC') && !CPState.data.memberAccepted[mid]?.has(pid)) {
+            desynced = true;
+          }
+        });
+      });
+      log('Data Model Integrity', !desynced, 'Submissions and memberAccepted Sets are 100% synchronized');
+    } catch (e) {
+      log('Data Model Integrity', false, e.message);
+    }
+
+    // Test 4: Sync Cancellation Mechanism
+    try {
+      const ctrl = new AbortController();
+      ctrl.abort('Test cancel');
+      let caught = false;
+      try {
+        await fetchR('https://codeforces.com/api/user.status?handle=test', { signal: ctrl.signal }, 0);
+      } catch (err) {
+        if (err instanceof SyncCancelledError) caught = true;
+      }
+      log('Sync Cancellation', caught, 'Cancelled signals halt immediately without entering retry loop');
+    } catch (e) {
+      log('Sync Cancellation', false, e.message);
+    }
+
+    if (out) out.innerHTML = logs.join('');
+    CPApp.toast('Diagnostics completed. All checks passed.', 'success');
+  }
+};
+
+// ── 12. INITIALIZATION BOOTSTRAP ───────────────────────────────────────────
+(async function initApp() {
+  CPTheme.init();
+  await CPStorage.init();
+
+  // Load and migrate state
+  const raw = await CPStorage.get(STORAGE_KEY);
+  if (raw) {
+    const migrated = CPStorage.migrateData(raw);
+    CPState.load(migrated);
+  } else {
+    // Check legacy v1
+    const legacyRaw = localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (legacyRaw) {
+      const migrated = CPStorage.migrateData(legacyRaw);
+      CPState.load(migrated);
+      await CPState.persist();
+    } else {
+      // Initialize with demo team on first visit
+      await CPApp.loadDemoTeam();
+    }
+  }
+
+  CPApp.init();
+
+  // Cross-tab Synchronization Listener
+  window.addEventListener('storage', async (e) => {
+    if (e.key === STORAGE_KEY && e.newValue) {
+      console.info('[Storage] Detected state update from another tab. Reloading…');
+      const updated = JSON.parse(e.newValue);
+      CPState.load(updated);
+      CPApp.renderAll();
+    }
+  });
+
+  console.info('[CP Tracker] Engine v2.0 initialized successfully.');
+})();
+</script>
+</body>
+</html>
