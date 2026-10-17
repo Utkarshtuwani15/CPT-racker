@@ -6,7 +6,6 @@
   <title>CP Team Tracker</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     tailwind.config = {
       darkMode: 'class',
@@ -127,6 +126,14 @@
           <span id="backend-dot" class="w-2 h-2 rounded-full bg-gray-400 inline-block"></span>
           <span id="backend-text">Checking Backend…</span>
         </div>
+        <div id="cloud-status-badge" class="hidden text-[11px] font-mono px-2.5 py-1 rounded-lg bg-blue-900/30 text-blue-400 border border-blue-700/40 flex items-center gap-1.5 shadow-sm">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 inline-block animate-pulse"></span>
+          <span>☁️ Cloud:</span>
+          <span id="cloud-url-text" class="font-bold underline truncate max-w-[130px] sm:max-w-[190px]"></span>
+          <button type="button" onclick="copyCloudUrl()" title="Copy Public Share Link" class="ml-1 px-1.5 py-0.5 rounded bg-blue-600 hover:bg-blue-500 text-white text-[10px] transition cursor-pointer flex items-center gap-1">
+            <i class="fas fa-copy"></i><span>Share</span>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -208,7 +215,7 @@
           <div class="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
             <div class="relative w-full sm:w-80">
               <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-mono text-sm">@</span>
-              <input id="inp-inapp-username" type="text" placeholder="username (e.g. tourist, utkarsh)"
+              <input id="inp-inapp-username" type="text" placeholder="Enter username (e.g. tourist, petr)"
                 oninput="handleInAppUsernameSearch(this.value)"
                 class="w-full pl-8 pr-3 py-2 text-sm dark:bg-[#1e1e2e] bg-white border dark:border-[#3b3b5c] border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono" />
               <div id="inapp-username-suggestions" class="absolute left-0 right-0 top-full mt-1 dark:bg-[#1e1e2e] bg-white border dark:border-[#3b3b5c] border-gray-200 rounded-lg shadow-xl z-20 hidden max-h-48 overflow-y-auto"></div>
@@ -495,10 +502,10 @@ const DEFAULT_DIRECTORY = [
     avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=neal'
   },
   {
-    inAppUsername: 'utkarsh',
-    name: 'Utkarsh Tuwani',
-    handles: { codeforces: '', leetcode: '', atcoder: '', cses: '' },
-    avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=utkarsh'
+    inAppUsername: 'petr',
+    name: 'Petr Mitrichev',
+    handles: { codeforces: 'Petr', leetcode: '', atcoder: 'Petr', cses: '' },
+    avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=petr'
   }
 ];
 
@@ -531,17 +538,84 @@ const CPBackend = {
   isOnline: false,
 
   async checkHealth() {
-    try {
-      const res = await fetch(`${this.baseUrl}/api/health`, { method: 'GET' });
-      if (res.ok) {
-        this.isOnline = true;
-        this.updateBadge(true);
-        return true;
-      }
-    } catch (_) {}
+    const candidates = [];
+    if (window.location.protocol.startsWith('http') && window.location.port !== '8000') {
+      candidates.push(window.location.origin);
+    }
+    candidates.push('http://localhost:8000');
+    candidates.push('http://127.0.0.1:8000');
+    if (window.location.protocol.startsWith('http')) {
+      candidates.push(window.location.origin);
+    }
+
+    for (const url of candidates) {
+      try {
+        const res = await fetch(`${url}/api/health`, { method: 'GET' });
+        if (res.ok) {
+          this.baseUrl = url;
+          this.isOnline = true;
+          this.updateBadge(true);
+          this.checkCloud();
+          return true;
+        }
+      } catch (_) {}
+    }
     this.isOnline = false;
     this.updateBadge(false);
     return false;
+  },
+
+  async checkCloud() {
+    try {
+      const data = await this.getCloudUrl();
+      if (data && data.success && data.cloudUrl) {
+        window.CP_CLOUD_URL = data.cloudUrl;
+        const badge = document.getElementById('cloud-status-badge');
+        const text = document.getElementById('cloud-url-text');
+        if (badge && text) {
+          text.textContent = data.cloudUrl.replace('https://', '');
+          badge.classList.remove('hidden');
+        }
+      }
+    } catch (_) {}
+  },
+
+  async login(identifier, password) {
+    if (!this.isOnline) await this.checkHealth();
+    try {
+      const res = await fetch(`${this.baseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier, password })
+      });
+      return await res.json();
+    } catch (e) {
+      console.warn('Backend login error', e);
+      return { error: 'Network error connecting to auth server' };
+    }
+  },
+
+  async register(name, email, username, password) {
+    if (!this.isOnline) await this.checkHealth();
+    try {
+      const res = await fetch(`${this.baseUrl}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, username, password })
+      });
+      return await res.json();
+    } catch (e) {
+      console.warn('Backend register error', e);
+      return { error: 'Network error connecting to auth server' };
+    }
+  },
+
+  async getCloudUrl() {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/cloud/url`);
+      if (res.ok) return await res.json();
+    } catch (_) {}
+    return null;
   },
 
   updateBadge(online) {
@@ -560,17 +634,50 @@ const CPBackend = {
     }
   },
 
-  async googleAuth(payload) {
+  async sendOtp(payload) {
+    if (!this.isOnline) await this.checkHealth();
     try {
-      const res = await fetch(`${this.baseUrl}/api/auth/google`, {
+      const res = await fetch(`${this.baseUrl}/api/auth/otp/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
       return await res.json();
     } catch (e) {
-      console.warn('Backend googleAuth error', e);
-      return null;
+      console.warn('Backend sendOtp error', e);
+      return { error: 'Network error connecting to auth server' };
+    }
+  },
+
+  async verifyOtp(payload) {
+    if (!this.isOnline) await this.checkHealth();
+    try {
+      const bodyData = { ...payload, otp: payload.code || payload.otp, code: payload.code || payload.otp };
+      const res = await fetch(`${this.baseUrl}/api/auth/otp/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bodyData)
+      });
+      return await res.json();
+    } catch (e) {
+      console.warn('Backend verifyOtp error', e);
+      return { error: 'Network error connecting to auth server' };
+    }
+  },
+
+  async quickAuth(identifier) {
+    if (!this.isOnline) await this.checkHealth();
+    try {
+      const body = identifier.includes('@') ? { email: identifier } : { username: identifier };
+      const res = await fetch(`${this.baseUrl}/api/auth/quick`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      return await res.json();
+    } catch (e) {
+      console.warn('Backend quickAuth error', e);
+      return { error: 'Network error connecting to auth server' };
     }
   },
 
@@ -2053,7 +2160,7 @@ function renderTeamName() {
   if (el) el.textContent = S.teamName || 'CP Team Tracker';
 }
 
-// ── 14e. AUTHENTICATION & GOOGLE SIGN-IN ────────────────────────────────────
+// ── 14e. AUTHENTICATION & EMAIL OTP SIGN-IN / SIGN-UP ───────────────────────
 function initAuth() {
   try {
     const raw = localStorage.getItem(AUTH_STORAGE_KEY);
@@ -2081,20 +2188,41 @@ function saveAuth() {
   }
 }
 
+function copyCloudUrl() {
+  const url = window.CP_CLOUD_URL || (window.location.protocol.startsWith('http') ? window.location.href : 'http://localhost:8000');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(() => {
+      toast(`☁️ Public Cloud URL copied to clipboard!`, 'success');
+    }).catch(() => {
+      prompt('Share this Public Cloud URL with teammates:', url);
+    });
+  } else {
+    prompt('Share this Public Cloud URL with teammates:', url);
+  }
+}
+
+function togglePwdVis(inputId, iconId) {
+  const inp = document.getElementById(inputId);
+  const ico = document.getElementById(iconId);
+  if (!inp) return;
+  if (inp.type === 'password') {
+    inp.type = 'text';
+    if (ico) { ico.classList.remove('fa-eye'); ico.classList.add('fa-eye-slash'); }
+  } else {
+    inp.type = 'password';
+    if (ico) { ico.classList.remove('fa-eye-slash'); ico.classList.add('fa-eye'); }
+  }
+}
+
 function renderAuthHeader() {
   const area = document.getElementById('auth-header-area');
   if (!area) return;
 
   if (!currentUser) {
     area.innerHTML = `
-      <button onclick="openAuthModal()" class="flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-lg bg-white dark:bg-[#262640] border dark:border-[#3b3b5c] border-gray-300 text-gray-700 dark:text-gray-200 hover:border-blue-500 shadow-sm transition">
-        <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-        </svg>
-        <span class="hidden sm:inline">Sign in with Google</span>
+      <button onclick="openAuthModal()" class="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition cursor-pointer">
+        <i class="fas fa-id-badge"></i>
+        <span class="hidden sm:inline">Sign In (ID & Password)</span>
         <span class="sm:hidden">Sign In</span>
       </button>
     `;
@@ -2113,72 +2241,275 @@ function renderAuthHeader() {
   }
 }
 
-window.handleGoogleCredentialResponse = async function(response) {
-  try {
-    if (!response || !response.credential) {
-      toast('Google Identity did not return a valid credential token', 'error');
-      return;
+let authTab = 'login'; // 'login' | 'signup'
+let authMethod = 'password'; // 'password' | 'otp'
+let authStep = 'input'; // 'input' | 'otp'
+let pendingAuth = { email: '', name: '', username: '', purpose: 'login', debugOtp: '' };
+let otpTimer = null;
+let otpCountdown = 0;
+
+function switchAuthTab(tab) {
+  authTab = tab;
+  authStep = 'input';
+  openAuthModal();
+}
+
+function switchAuthMethod(method) {
+  authMethod = method;
+  authStep = 'input';
+  openAuthModal();
+}
+
+function switchAuthStep(step) {
+  authStep = step;
+  openAuthModal();
+}
+
+function startOtpCountdown(seconds = 60) {
+  otpCountdown = seconds;
+  if (otpTimer) clearInterval(otpTimer);
+  updateResendBtn();
+  otpTimer = setInterval(() => {
+    otpCountdown--;
+    if (otpCountdown <= 0) {
+      clearInterval(otpTimer);
+      otpTimer = null;
     }
-    toast('Verifying Google credentials with Google OAuth API…', 'info');
-    const res = await CPBackend.googleAuth({ credential: response.credential });
+    updateResendBtn();
+  }, 1000);
+}
+
+function updateResendBtn() {
+  const btn = document.getElementById('btn-resend-otp');
+  if (!btn) return;
+  if (otpCountdown > 0) {
+    btn.disabled = true;
+    btn.classList.add('opacity-50', 'cursor-not-allowed');
+    btn.innerHTML = `<i class="fas fa-clock mr-1"></i>Resend in ${otpCountdown}s`;
+  } else {
+    btn.disabled = false;
+    btn.classList.remove('opacity-50', 'cursor-not-allowed');
+    btn.innerHTML = `<i class="fas fa-redo-alt mr-1"></i>Resend Code`;
+  }
+}
+
+function autoFillOtp(code) {
+  const inp = document.getElementById('auth-otp-code');
+  if (inp) {
+    inp.value = code;
+    inp.focus();
+    toast('Code filled! Click "Verify & Sign In"', 'info');
+  }
+}
+
+async function handlePasswordLoginSubmit(e) {
+  if (e) e.preventDefault();
+  const identInp = document.getElementById('auth-login-id');
+  const pwdInp = document.getElementById('auth-login-pwd');
+  const identifier = (identInp?.value || '').trim();
+  const password = (pwdInp?.value || '').trim();
+
+  if (!identifier) {
+    toast('Please enter your User ID (@username) or Email', 'warning');
+    if (identInp) identInp.focus();
+    return;
+  }
+  if (!password) {
+    toast('Please enter your password', 'warning');
+    if (pwdInp) pwdInp.focus();
+    return;
+  }
+
+  const btn = document.getElementById('btn-login-pwd');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i> Signing In…';
+  }
+
+  try {
+    toast('Authenticating with cloud database…', 'info');
+    const res = await CPBackend.login(identifier, password);
     if (res && res.success && res.user) {
       applySignedInUser(res.user);
     } else {
-      toast(res?.error || 'Google authentication failed', 'error');
+      toast(res?.error || 'Invalid User ID or password', 'error');
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-sign-in-alt mr-1.5"></i> Sign In with ID & Password';
+      }
+      if (pwdInp) {
+        pwdInp.select();
+        pwdInp.focus();
+      }
     }
   } catch (err) {
-    console.error('Google credential error:', err);
-    toast('Error verifying Google credentials with backend', 'error');
-  }
-};
-
-function renderGoogleButton() {
-  const container = document.getElementById('g_official_btn_container');
-  if (!container) return;
-  const savedClientId = localStorage.getItem('cp_google_client_id') || '407408718192-gm05v62v0147g12m6q7uup05l752lfl0.apps.googleusercontent.com';
-  if (window.google?.accounts?.id) {
-    try {
-      google.accounts.id.initialize({
-        client_id: savedClientId,
-        callback: window.handleGoogleCredentialResponse,
-        auto_select: false,
-        cancel_on_tap_outside: true
-      });
-      google.accounts.id.renderButton(container, {
-        theme: document.documentElement.classList.contains('dark') ? 'filled_black' : 'outline',
-        size: 'large',
-        type: 'standard',
-        shape: 'rectangular',
-        text: 'signin_with',
-        logo_alignment: 'left',
-        width: 300
-      });
-      return;
-    } catch (e) {
-      console.warn('Google button init warning:', e);
+    console.error('Login submit error:', err);
+    toast('Network error during login', 'error');
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-sign-in-alt mr-1.5"></i> Sign In with ID & Password';
     }
   }
-  // Fallback if Google library blocked by privacy shield
-  container.innerHTML = `
-    <button onclick="handleGoogleSignIn('Google User', 'developer@gmail.com', '')" class="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs shadow-sm transition">
-      <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24"><path fill="#ffffff" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#ffffff" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#ffffff" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="#ffffff" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
-      <span>Continue with Google Sign-In</span>
-    </button>
-  `;
 }
 
-function saveGoogleClientId(val) {
-  const trimmed = (val || '').trim();
-  if (trimmed) {
-    localStorage.setItem('cp_google_client_id', trimmed);
-    toast('Google Client ID saved! Re-rendering Google button…', 'success');
-    renderGoogleButton();
+async function handlePasswordRegisterSubmit(e) {
+  if (e) e.preventDefault();
+  const name = (document.getElementById('auth-reg-name')?.value || '').trim();
+  const email = (document.getElementById('auth-reg-email')?.value || '').trim().toLowerCase();
+  const username = (document.getElementById('auth-reg-username')?.value || '').trim().replace(/^@/, '');
+  const password = (document.getElementById('auth-reg-pwd')?.value || '').trim();
+
+  if (!name) {
+    toast('Please enter your full name', 'warning');
+    return;
+  }
+  if (!email || !email.includes('@') || !email.includes('.')) {
+    toast('Please enter a valid email address', 'warning');
+    return;
+  }
+  if (!password || password.length < 4) {
+    toast('Password must be at least 4 characters long', 'warning');
+    return;
+  }
+
+  const btn = document.getElementById('btn-register-pwd');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i> Creating Account…';
+  }
+
+  try {
+    toast('Registering account on cloud database…', 'info');
+    const res = await CPBackend.register(name, email, username, password);
+    if (res && res.success && res.user) {
+      applySignedInUser(res.user);
+    } else {
+      toast(res?.error || 'Registration failed', 'error');
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-user-plus mr-1.5"></i> Create Account & Sign In';
+      }
+    }
+  } catch (err) {
+    console.error('Register submit error:', err);
+    toast('Network error during registration', 'error');
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-user-plus mr-1.5"></i> Create Account & Sign In';
+    }
   }
 }
 
-function toggleGConfig() {
-  const el = document.getElementById('g-config-box');
-  if (el) el.classList.toggle('hidden');
+async function handleSendOtpSubmit(e) {
+  if (e) e.preventDefault();
+  const btn = document.getElementById('btn-send-otp');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Sending Code…';
+  }
+
+  try {
+    const email = document.getElementById('auth-login-email')?.value?.trim();
+    if (!email || !email.includes('@')) {
+      toast('Please enter a valid email address', 'error');
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane mr-1.5"></i>Send 6-Digit Code'; }
+      return;
+    }
+    toast('Generating and sending OTP code…', 'info');
+    const res = await CPBackend.sendOtp({ email, purpose: 'login' });
+    if (res && res.success) {
+      pendingAuth = { email, purpose: 'login', debugOtp: res.debugOtp || '' };
+      authStep = 'otp';
+      startOtpCountdown(60);
+      openAuthModal();
+      toast(`Verification code sent to ${email}`, 'success');
+    } else {
+      toast(res?.error || 'Failed to send verification code', 'error');
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane mr-1.5"></i>Send 6-Digit Code'; }
+    }
+  } catch (err) {
+    console.error('Error in handleSendOtpSubmit:', err);
+    toast('Network error sending verification code', 'error');
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane mr-1.5"></i>Send Code'; }
+  }
+}
+
+async function handleResendOtp() {
+  if (otpCountdown > 0) return;
+  if (!pendingAuth || !pendingAuth.email) return;
+
+  toast('Resending verification code…', 'info');
+  const res = await CPBackend.sendOtp(pendingAuth);
+  if (res && res.success) {
+    pendingAuth.debugOtp = res.debugOtp || '';
+    startOtpCountdown(60);
+    openAuthModal();
+    toast('New 6-digit verification code sent!', 'success');
+  } else {
+    toast(res?.error || 'Failed to resend code', 'error');
+  }
+}
+
+async function handleVerifyOtpSubmit(e) {
+  if (e) e.preventDefault();
+  const codeInp = document.getElementById('auth-otp-code');
+  const code = (codeInp?.value || '').trim().replace(/\D/g, '');
+  if (!code || code.length !== 6) {
+    toast('Please enter the 6-digit OTP code', 'warning');
+    if (codeInp) codeInp.focus();
+    return;
+  }
+
+  const btn = document.getElementById('btn-verify-otp');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i> Verifying Code…';
+  }
+
+  try {
+    toast('Verifying OTP code with backend…', 'info');
+    const res = await CPBackend.verifyOtp({
+      email: pendingAuth.email,
+      code,
+      name: pendingAuth.name,
+      username: pendingAuth.username,
+      purpose: pendingAuth.purpose
+    });
+
+    if (res && res.success && res.user) {
+      authStep = 'input';
+      if (otpTimer) { clearInterval(otpTimer); otpTimer = null; }
+      pendingAuth = { email: '', name: '', username: '', purpose: 'login', debugOtp: '' };
+      applySignedInUser(res.user);
+    } else {
+      toast(res?.error || 'Invalid or expired verification code', 'error');
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-check-circle mr-1.5"></i> Verify & Sign In';
+      }
+      if (codeInp) {
+        codeInp.select();
+        codeInp.focus();
+      }
+    }
+  } catch (err) {
+    console.error('Error in handleVerifyOtpSubmit:', err);
+    toast('Network error verifying code', 'error');
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-check-circle mr-1.5"></i> Verify & Sign In';
+    }
+  }
+}
+
+async function handleQuickSignIn(identifier) {
+  toast(`1-Click signing in as @${identifier}…`, 'info');
+  const res = await CPBackend.quickAuth(identifier);
+  if (res && res.success && res.user) {
+    applySignedInUser(res.user);
+  } else {
+    toast(res?.error || 'Quick login failed', 'error');
+  }
 }
 
 function applySignedInUser(backendUser) {
@@ -2189,7 +2520,7 @@ function applySignedInUser(backendUser) {
     email: backendUser.email,
     inAppUsername: inAppUsername,
     avatar: backendUser.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${inAppUsername}`,
-    provider: 'google',
+    provider: 'id_password',
     handles: backendUser.handles || {
       codeforces: '',
       leetcode: '',
@@ -2208,7 +2539,7 @@ function applySignedInUser(backendUser) {
     setTimeout(() => {
       openConnectHandlesModal();
     }, 400);
-    toast(`Welcome, ${currentUser.displayName}! Assigned UserId: @${inAppUsername}. Please connect your handles.`, 'info');
+    toast(`Welcome, ${currentUser.displayName}! Assigned User ID: @${inAppUsername}. Please connect your handles.`, 'info');
   } else {
     toast(`Welcome back, ${currentUser.displayName}! Signed in as @${inAppUsername}`, 'success');
   }
@@ -2217,97 +2548,200 @@ function applySignedInUser(backendUser) {
 function openAuthModal() {
   const modalBody = document.getElementById('modal-body');
   if (!currentUser) {
-    const curClientId = localStorage.getItem('cp_google_client_id') || '407408718192-gm05v62v0147g12m6q7uup05l752lfl0.apps.googleusercontent.com';
-    modalBody.innerHTML = `
-      <div class="mb-3 text-center">
-        <div class="w-12 h-12 rounded-2xl bg-blue-600/10 text-blue-500 mx-auto flex items-center justify-center text-2xl mb-2">
-          <svg class="w-7 h-7" viewBox="0 0 24 24">
-            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-          </svg>
-        </div>
-        <h2 class="text-xl font-bold">Sign In with Google</h2>
-        <p class="text-xs dark:text-gray-400 text-gray-500 mt-1">
-          Anyone can sign up with their Google account and will automatically be assigned a personalized <strong>UserId (@handle)</strong> in the database.
-        </p>
-      </div>
-
-      <!-- Official Google Sign-In Button Container -->
-      <div class="mb-4">
-        <label class="block text-center text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-2">Google Identity Services (Official API)</label>
-        <div id="g_official_btn_container" class="flex justify-center min-h-[44px]"></div>
-        
-        <div class="text-center mt-2">
-          <button type="button" onclick="toggleGConfig()" class="text-[11px] text-blue-400 hover:underline">
-            <i class="fas fa-cog mr-1"></i>Google OAuth Client ID Settings
+    if (authStep === 'otp') {
+      modalBody.innerHTML = `
+        <div class="mb-3">
+          <button type="button" onclick="switchAuthStep('input')" class="text-xs text-blue-500 hover:text-blue-400 font-medium flex items-center gap-1.5 mb-2 transition">
+            <i class="fas fa-arrow-left"></i>
+            <span>Back to Sign In</span>
           </button>
-        </div>
-        <div id="g-config-box" class="hidden mt-2 p-2.5 rounded-lg dark:bg-[#1e1e2e] bg-gray-100 border dark:border-[#3b3b5c] border-gray-200 text-xs">
-          <label class="block text-[10px] uppercase font-bold text-gray-400 mb-1">Google OAuth 2.0 Web Client ID</label>
-          <div class="flex gap-1.5">
-            <input id="cfg-google-client-id" type="text" value="${esc(curClientId)}" placeholder="xxxx.apps.googleusercontent.com"
-              class="flex-1 text-[11px] px-2 py-1 rounded dark:bg-[#262640] bg-white border dark:border-[#3b3b5c] border-gray-300 font-mono outline-none" />
-            <button onclick="saveGoogleClientId(document.getElementById('cfg-google-client-id').value)" class="px-2.5 py-1 text-[11px] bg-blue-600 hover:bg-blue-700 text-white font-medium rounded transition">Save</button>
-          </div>
-          <p class="text-[10px] text-gray-400 mt-1">From Google Cloud Console &rarr; APIs & Services &rarr; Credentials.</p>
-        </div>
-      </div>
-
-      <div class="flex items-center gap-2 my-3">
-        <div class="flex-1 border-t dark:border-[#3b3b5c] border-gray-200"></div>
-        <span class="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Or Instant Google Sign-Up</span>
-        <div class="flex-1 border-t dark:border-[#3b3b5c] border-gray-200"></div>
-      </div>
-
-      <div class="space-y-3 mb-4">
-        <form onsubmit="handleGoogleAuthSubmit(event)" class="space-y-3">
-          <div>
-            <label class="block text-xs font-semibold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">Google Account Name</label>
-            <input id="inp-g-name" type="text" required placeholder="e.g. Utkarsh Tuwani" value="Utkarsh Tuwani"
-              class="w-full text-xs dark:bg-[#1e1e2e] bg-white border dark:border-[#3b3b5c] border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label class="block text-xs font-semibold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">Google Account Email</label>
-            <input id="inp-g-email" type="email" required placeholder="e.g. utkarshtuwani@gmail.com" value="utkarshtuwani@gmail.com"
-              class="w-full text-xs dark:bg-[#1e1e2e] bg-white border dark:border-[#3b3b5c] border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label class="block text-xs font-semibold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">Preferred In-App Username / UserId (Optional)</label>
-            <div class="relative">
-              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-mono text-xs">@</span>
-              <input id="inp-g-username" type="text" placeholder="Leave blank for auto-assigned personalized UserId"
-                class="w-full text-xs pl-7 pr-3 py-2 dark:bg-[#1e1e2e] bg-white border dark:border-[#3b3b5c] border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
+          <div class="text-center">
+            <div class="w-12 h-12 rounded-2xl bg-emerald-600/10 text-emerald-500 mx-auto flex items-center justify-center text-2xl mb-2">
+              <i class="fas fa-shield-alt"></i>
             </div>
-            <p class="text-[11px] dark:text-gray-500 text-gray-400 mt-0.5">Teammates can invite you to their group using this unique @username.</p>
+            <h2 class="text-xl font-bold">Enter Verification Code</h2>
+            <p class="text-xs dark:text-gray-400 text-gray-500 mt-1">
+              We sent a 6-digit OTP code to <strong class="text-blue-400 font-mono">${esc(pendingAuth.email)}</strong>
+            </p>
+          </div>
+        </div>
+
+        ${pendingAuth.debugOtp ? `
+          <div class="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs flex items-center justify-between mb-3">
+            <span class="flex items-center gap-1.5"><i class="fas fa-key text-emerald-400"></i> Dev Code: <strong class="font-mono text-sm tracking-widest bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-500/30">${pendingAuth.debugOtp}</strong></span>
+            <button type="button" onclick="autoFillOtp('${pendingAuth.debugOtp}')" class="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] transition">Auto-Fill</button>
+          </div>
+        ` : ''}
+
+        <form onsubmit="handleVerifyOtpSubmit(event)" class="space-y-4 mb-2">
+          <div>
+            <label class="block text-center text-xs font-semibold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-2">6-Digit OTP Code</label>
+            <input id="auth-otp-code" type="text" maxlength="6" inputmode="numeric" pattern="[0-9]{6}" required autofocus
+              value="${pendingAuth.debugOtp || ''}"
+              placeholder="123456"
+              class="w-full text-center tracking-[0.5em] text-2xl font-bold font-mono py-2.5 dark:bg-[#1e1e2e] bg-white border-2 dark:border-blue-500/50 border-blue-500/40 rounded-xl outline-none focus:ring-4 focus:ring-blue-500/30" />
+            <p class="text-[11px] text-center dark:text-gray-400 text-gray-500 mt-1.5">Code expires in 10 minutes (5 attempts allowed)</p>
           </div>
 
-          <button type="submit" class="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs shadow-sm transition">
-            <i class="fas fa-user-check"></i>
-            <span>Register / Sign In & Assign UserId</span>
+          <button id="btn-verify-otp" type="submit" class="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition">
+            <i class="fas fa-check-circle"></i>
+            <span>Verify & Complete Sign In</span>
           </button>
+
+          <div class="flex items-center justify-between pt-1 text-xs">
+            <span class="dark:text-gray-400 text-gray-500">Didn't receive code?</span>
+            <button type="button" id="btn-resend-otp" onclick="handleResendOtp()" class="text-blue-500 hover:underline font-semibold flex items-center gap-1">
+              <i class="fas fa-redo-alt text-[10px]"></i>
+              <span>Resend</span>
+            </button>
+          </div>
         </form>
-
-        <div class="flex items-center gap-2 my-2">
-          <div class="flex-1 border-t dark:border-[#3b3b5c] border-gray-200"></div>
-          <span class="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Quick Teammate Login</span>
-          <div class="flex-1 border-t dark:border-[#3b3b5c] border-gray-200"></div>
+      `;
+      setTimeout(() => {
+        updateResendBtn();
+        const inp = document.getElementById('auth-otp-code');
+        if (inp) inp.focus();
+      }, 50);
+    } else {
+      modalBody.innerHTML = `
+        <div class="mb-3 text-center">
+          <div class="w-12 h-12 rounded-2xl bg-blue-600/10 text-blue-500 mx-auto flex items-center justify-center text-2xl mb-2">
+            <i class="fas fa-shield-alt"></i>
+          </div>
+          <h2 class="text-xl font-bold">Cloud Account Access</h2>
+          <p class="text-xs dark:text-gray-400 text-gray-500 mt-1">
+            Access your team tracker from any device using your <strong>User ID & Password</strong>.
+          </p>
         </div>
 
-        <div class="grid grid-cols-2 gap-2">
-          <button onclick="handleGoogleSignIn('Gennady Korotkevich', 'tourist@gmail.com', 'tourist')" class="p-2 text-xs rounded-lg border dark:border-[#3b3b5c] border-gray-300 hover:bg-gray-100 dark:hover:bg-[#1e1e2e] transition text-left flex items-center gap-2">
-            <img src="https://api.dicebear.com/7.x/bottts/svg?seed=tourist" class="w-6 h-6 rounded-full" />
-            <span class="truncate font-semibold">@tourist</span>
+        ${window.CP_CLOUD_URL ? `
+          <div class="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs flex items-center justify-between mb-4 shadow-sm">
+            <div class="flex items-center gap-2 truncate">
+              <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
+              <span class="font-semibold text-gray-300">Public Cloud Link:</span>
+              <span class="font-mono text-[11px] truncate underline text-blue-300">${window.CP_CLOUD_URL}</span>
+            </div>
+            <button type="button" onclick="copyCloudUrl()" class="px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white font-bold text-[10px] shrink-0 ml-2 transition flex items-center gap-1">
+              <i class="fas fa-copy"></i><span>Share</span>
+            </button>
+          </div>
+        ` : ''}
+
+        <!-- Tab Switcher -->
+        <div class="flex rounded-xl bg-gray-100 dark:bg-[#1e1e2e] p-1 mb-4 border dark:border-[#3b3b5c] border-gray-200">
+          <button type="button" onclick="switchAuthTab('login')" class="flex-1 py-1.5 text-xs font-semibold rounded-lg transition ${authTab === 'login' ? 'bg-white dark:bg-blue-600 text-blue-600 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-900 dark:hover:text-gray-200'}">
+            <i class="fas fa-sign-in-alt mr-1"></i> Sign In
           </button>
-          <button onclick="handleGoogleSignIn('Neal Wu', 'neal@gmail.com', 'neal')" class="p-2 text-xs rounded-lg border dark:border-[#3b3b5c] border-gray-300 hover:bg-gray-100 dark:hover:bg-[#1e1e2e] transition text-left flex items-center gap-2">
-            <img src="https://api.dicebear.com/7.x/bottts/svg?seed=neal" class="w-6 h-6 rounded-full" />
-            <span class="truncate font-semibold">@neal</span>
+          <button type="button" onclick="switchAuthTab('signup')" class="flex-1 py-1.5 text-xs font-semibold rounded-lg transition ${authTab === 'signup' ? 'bg-white dark:bg-blue-600 text-blue-600 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-900 dark:hover:text-gray-200'}">
+            <i class="fas fa-user-plus mr-1"></i> Create Account
           </button>
         </div>
-      </div>
-    `;
-    setTimeout(renderGoogleButton, 50);
+
+        ${authTab === 'login' ? `
+          ${authMethod === 'password' ? `
+            <form onsubmit="handlePasswordLoginSubmit(event)" class="space-y-3 mb-2">
+              <div>
+                <label class="block text-xs font-semibold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">
+                  <i class="fas fa-user text-blue-400 mr-1"></i>User ID (@username) or Email
+                </label>
+                <div class="relative">
+                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-mono text-xs">@</span>
+                  <input id="auth-login-id" type="text" required placeholder="Enter your User ID or Email" autocomplete="username"
+                    class="w-full text-xs pl-7 pr-3 py-2.5 dark:bg-[#1e1e2e] bg-white border dark:border-[#3b3b5c] border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
+                </div>
+              </div>
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <label class="block text-xs font-semibold uppercase tracking-wider dark:text-gray-300 text-gray-700">
+                    <i class="fas fa-lock text-blue-400 mr-1"></i>Password
+                  </label>
+                  <button type="button" onclick="switchAuthMethod('otp')" class="text-[11px] text-blue-400 hover:underline">Use Email OTP code instead</button>
+                </div>
+                <div class="relative">
+                  <i class="fas fa-key absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+                  <input id="auth-login-pwd" type="password" required placeholder="Enter your password" autocomplete="current-password"
+                    class="w-full text-xs pl-8 pr-9 py-2.5 dark:bg-[#1e1e2e] bg-white border dark:border-[#3b3b5c] border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
+                  <button type="button" onclick="togglePwdVis('auth-login-pwd', 'ico-pwd-login')" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-200 text-xs">
+                    <i id="ico-pwd-login" class="fas fa-eye"></i>
+                  </button>
+                </div>
+              </div>
+
+              <button id="btn-login-pwd" type="submit" class="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition">
+                <i class="fas fa-sign-in-alt"></i>
+                <span>Sign In</span>
+              </button>
+            </form>
+          ` : `
+            <form onsubmit="handleSendOtpSubmit(event)" class="space-y-3 mb-2">
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <label class="block text-xs font-semibold uppercase tracking-wider dark:text-gray-300 text-gray-700">Email Address for OTP</label>
+                  <button type="button" onclick="switchAuthMethod('password')" class="text-[11px] text-blue-400 hover:underline">Sign In with Password instead</button>
+                </div>
+                <div class="relative">
+                  <i class="fas fa-envelope absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+                  <input id="auth-login-email" type="email" required placeholder="Enter your email address" value="${esc(pendingAuth.email || '')}"
+                    class="w-full text-xs pl-8 pr-3 py-2.5 dark:bg-[#1e1e2e] bg-white border dark:border-[#3b3b5c] border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <p class="text-[11px] dark:text-gray-500 text-gray-400 mt-1">We'll send a 6-digit OTP code to verify your identity.</p>
+              </div>
+
+              <button id="btn-send-otp" type="submit" class="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition">
+                <i class="fas fa-paper-plane"></i>
+                <span>Send 6-Digit Verification Code</span>
+              </button>
+            </form>
+          `}
+        ` : `
+          <form onsubmit="handlePasswordRegisterSubmit(event)" class="space-y-3 mb-2">
+            <div>
+              <label class="block text-xs font-semibold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">
+                <i class="fas fa-at text-blue-400 mr-1"></i>Choose User ID / Username
+              </label>
+              <div class="relative">
+                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-mono text-xs">@</span>
+                <input id="auth-reg-username" type="text" required placeholder="e.g. coder123" autocomplete="username"
+                  class="w-full text-xs pl-7 pr-3 py-2.5 dark:bg-[#1e1e2e] bg-white border dark:border-[#3b3b5c] border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
+              </div>
+              <p class="text-[11px] dark:text-gray-500 text-gray-400 mt-0.5">Teammates will invite you to their group using this unique @username.</p>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">
+                <i class="fas fa-lock text-blue-400 mr-1"></i>Password
+              </label>
+              <div class="relative">
+                <i class="fas fa-key absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+                <input id="auth-reg-pwd" type="password" required placeholder="Create a password (min 4 characters)" autocomplete="new-password"
+                  class="w-full text-xs pl-8 pr-9 py-2.5 dark:bg-[#1e1e2e] bg-white border dark:border-[#3b3b5c] border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
+                <button type="button" onclick="togglePwdVis('auth-reg-pwd', 'ico-pwd-reg')" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-200 text-xs">
+                  <i id="ico-pwd-reg" class="fas fa-eye"></i>
+                </button>
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">
+                <i class="fas fa-user text-blue-400 mr-1"></i>Full Name / Display Name
+              </label>
+              <input id="auth-reg-name" type="text" required placeholder="Enter your full name"
+                class="w-full text-xs px-3 py-2.5 dark:bg-[#1e1e2e] bg-white border dark:border-[#3b3b5c] border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">
+                <i class="fas fa-envelope text-blue-400 mr-1"></i>Email Address
+              </label>
+              <input id="auth-reg-email" type="email" required placeholder="Enter your email address" autocomplete="email"
+                class="w-full text-xs px-3 py-2.5 dark:bg-[#1e1e2e] bg-white border dark:border-[#3b3b5c] border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+
+            <button id="btn-register-pwd" type="submit" class="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition">
+              <i class="fas fa-user-plus"></i>
+              <span>Create Account</span>
+            </button>
+          </form>
+        `}
+      `;
+    }
   } else {
     modalBody.innerHTML = `
       <div class="mb-4">
@@ -2318,7 +2752,7 @@ function openAuthModal() {
               <h2 class="text-xl font-bold">${esc(currentUser.displayName)}</h2>
               <span class="px-2 py-0.5 rounded-full text-[10px] bg-blue-900/30 text-blue-400 border border-blue-700/40 font-mono">@${esc(currentUser.inAppUsername)}</span>
             </div>
-            <p class="text-xs dark:text-gray-400 text-gray-500">${esc(currentUser.email || 'Google Account')}</p>
+            <p class="text-xs dark:text-gray-400 text-gray-500">${esc(currentUser.email || 'Verified Account')}</p>
           </div>
         </div>
       </div>
@@ -2370,41 +2804,6 @@ function openAuthModal() {
     `;
   }
   showModal();
-}
-
-async function handleGoogleAuthSubmit(e) {
-  e.preventDefault();
-  const name = document.getElementById('inp-g-name').value.trim();
-  const email = document.getElementById('inp-g-email').value.trim();
-  const username = document.getElementById('inp-g-username').value.trim().replace(/^@/, '');
-
-  await handleGoogleSignIn(name, email, username);
-}
-
-async function handleGoogleSignIn(name, email, defaultUsername) {
-  let backendUser = null;
-  if (CPBackend.isOnline) {
-    const res = await CPBackend.googleAuth({ name, email, username: defaultUsername });
-    if (res && res.success && res.user) {
-      backendUser = res.user;
-    }
-  }
-
-  const inAppUsername = backendUser ? backendUser.username : (defaultUsername || email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, ''));
-  const user = {
-    id: backendUser ? backendUser.id : ('usr_' + genId()),
-    displayName: backendUser ? backendUser.displayName : name,
-    email: email,
-    username: inAppUsername,
-    avatar: backendUser ? backendUser.avatar : `https://api.dicebear.com/7.x/bottts/svg?seed=${inAppUsername}`,
-    handles: backendUser && backendUser.handles ? backendUser.handles : {
-      codeforces: '',
-      leetcode: '',
-      atcoder: '',
-      cses: ''
-    }
-  };
-  applySignedInUser(user);
 }
 
 // ── CONNECT HANDLES MODAL ───────────────────────────────────────────────────
@@ -2546,7 +2945,7 @@ function openInviteModal() {
         <label class="block text-xs font-semibold uppercase tracking-wider dark:text-gray-300 text-gray-700 mb-1">Teammate In-App Username (@)</label>
         <div class="relative">
           <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-mono text-xs">@</span>
-          <input id="invite-inp-username" type="text" required placeholder="Type username (e.g. tourist, petr, utkarsh)"
+          <input id="invite-inp-username" type="text" required placeholder="Type username (e.g. tourist, petr, neal)"
             oninput="handleInviteSearch(this.value)" autocomplete="off"
             class="w-full text-xs pl-7 pr-3 py-2.5 dark:bg-[#1e1e2e] bg-white border dark:border-[#3b3b5c] border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
           <div id="invite-suggestions" class="absolute left-0 right-0 top-full mt-1 dark:bg-[#1e1e2e] bg-white border dark:border-[#3b3b5c] border-gray-200 rounded-lg shadow-xl z-30 hidden max-h-40 overflow-y-auto"></div>
@@ -2688,7 +3087,7 @@ async function handleCreateGroupSubmit(e) {
   if (!name) return;
 
   if (CPBackend.isOnline) {
-    const res = await CPBackend.createGroup(name, currentUser?.id || 'usr_utkarsh');
+    const res = await CPBackend.createGroup(name, currentUser?.id || ('usr_' + genId()));
     if (res && res.success && res.group) {
       S.currentGroupId = res.group.id;
       S.currentGroupName = res.group.name;
@@ -2763,7 +3162,7 @@ async function handleJoinGroupSubmit(e) {
   if (!gid) return;
 
   if (CPBackend.isOnline) {
-    const res = await CPBackend.joinGroup(gid, currentUser?.id || 'usr_utkarsh');
+    const res = await CPBackend.joinGroup(gid, currentUser?.id || ('usr_' + genId()));
     if (res.error) {
       toast(res.error, 'error');
       return;
